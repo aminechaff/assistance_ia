@@ -1,3 +1,5 @@
+(WARNING! our l'instant, la teranscrition fonctionne, mais ollama est moyen)
+
 # IA Assistance
 
 IA Assistance est un hub local de transcription audio pour Windows. Il permet d'ecouter le son du PC, le microphone, de transcrire en continu avec l'API locale de Murmure, puis d'interroger la transcription avec un assistant Ollama.
