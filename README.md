@@ -1,4 +1,4 @@
-(WARNING! our l'instant, la teranscrition fonctionne, mais ollama est moyen)
+⚠️ Warning ! Pour l’instant, la transcription fonctionne, mais Ollama est moyen.
 
 # IA Assistance
 
