@@ -73,6 +73,8 @@ Pendant l'installation de Python, cocher l'option `Add python.exe to PATH`.
 
 ## Installation complete sur un nouveau PC
 
+Si tu telecharges une Release `.exe`, va directement a la section [Utilisation avec une Release](#utilisation-avec-une-release).
+
 ### 1. Recuperer le projet
 
 Avec Git:
@@ -174,6 +176,69 @@ Si tout est pret:
 4. Cliquer sur `Demarrer` dans `Ecoute PC` pour transcrire le son de l'ordinateur.
 5. Cliquer sur `Demarrer` dans `Ma voix` pour transcrire le micro.
 6. Utiliser l'historique pour ouvrir, modifier, renommer ou supprimer une transcription.
+
+## Utilisation avec une Release
+
+Une Release GitHub peut contenir un fichier du type:
+
+```text
+IA Assistance-0.1.0-portable.exe
+```
+
+Dans ce mode, ton frere n'a pas besoin d'installer Node.js, npm, Python, la venv ou les dependances Python. Tout cela est deja package dans l'executable.
+
+Il doit quand meme installer et lancer:
+
+- Murmure, avec l'API locale activee sur le port `4800`.
+- Ollama, seulement s'il veut utiliser les fonctions assistant.
+
+Etapes pour lui:
+
+1. Installer Murmure depuis https://github.com/Kieirra/murmure/releases
+2. Lancer Murmure.
+3. Activer l'API locale de Murmure sur le port `4800`.
+4. Telecharger `IA Assistance-0.1.0-portable.exe` depuis les Releases de ce depot.
+5. Double-cliquer sur l'executable.
+
+Optionnel pour l'assistant:
+
+```powershell
+ollama pull qwen3.5:4b
+```
+
+## Creer une Release `.exe`
+
+Pour generer le fichier `.exe` depuis le code source:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\build-release.ps1
+```
+
+Le script fait automatiquement:
+
+1. installation/mise a jour des dependances Python;
+2. build du serveur Python avec PyInstaller;
+3. installation des dependances Electron;
+4. build de l'application portable avec electron-builder.
+
+Le fichier final est cree ici:
+
+```text
+app-electron\dist\IA Assistance-0.1.0-portable.exe
+```
+
+Pour le publier:
+
+1. Aller sur GitHub.
+2. Ouvrir le depot `assistance_ia`.
+3. Cliquer sur `Releases`.
+4. Cliquer sur `Create a new release`.
+5. Creer un tag, par exemple `v0.1.0`.
+6. Donner un titre, par exemple `IA Assistance 0.1.0`.
+7. Ajouter le fichier `app-electron\dist\IA Assistance-0.1.0-portable.exe` dans les assets.
+8. Publier la release.
+
+Important: cet executable ne contient pas Murmure et ne contient pas Ollama. Il contient seulement IA Assistance, son interface Electron et son moteur Python.
 
 ## Configuration
 

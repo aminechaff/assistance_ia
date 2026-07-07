@@ -1,1 +1,35 @@
-{"name":"ia-assistance","version":"0.1.0","description":"IA Assistance - hub audio/transcription","main":"main.js","scripts":{"start":"electron ."},"devDependencies":{"electron":"^38.8.6"}}
+{
+  "name": "ia-assistance",
+  "version": "0.1.0",
+  "description": "IA Assistance - hub audio/transcription",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win portable"
+  },
+  "build": {
+    "appId": "fr.aminechaff.ia-assistance",
+    "productName": "IA Assistance",
+    "files": [
+      "main.js",
+      "renderer/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../ecoute-pc/dist/ia-assistance-moteur.exe",
+        "to": "moteur/ia-assistance-moteur.exe"
+      }
+    ],
+    "win": {
+      "target": [
+        "portable"
+      ],
+      "artifactName": "${productName}-${version}-portable.${ext}"
+    }
+  },
+  "devDependencies": {
+    "electron": "^38.8.6",
+    "electron-builder": "^26.0.12"
+  }
+}

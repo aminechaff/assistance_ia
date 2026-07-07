@@ -24,6 +24,16 @@ Thumbs.db
 tmp/
 temp/
 
+# Build artifacts
+dist/
+build/
+release/
+*.spec
+app-electron/dist/
+app-electron/build/
+ecoute-pc/dist/
+ecoute-pc/build/
+
 # Local copies of the upstream Murmure project.
 # IA Assistance uses Murmure as an installed/local dependency via its HTTP API.
 murmure/
