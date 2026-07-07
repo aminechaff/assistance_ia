@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>IA Assistance</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>🤖 IA Assistance</h1>
+    <div id="statut-murmure" class="pastille" title="État du moteur Murmure">
+      <span class="point"></span> Murmure
+    </div>
+  </header>
+
+  <main>
+    <aside>
+      <section class="sources">
+        <div class="carte" id="carte-pc">
+          <div class="carte-titre">🎧 Écoute PC</div>
+          <p>YouTube, Discord, Teams, musique… tout ce que l'ordinateur joue.</p>
+          <button id="btn-pc" data-source="pc">Démarrer</button>
+          <div class="peripherique" id="periph-pc"></div>
+        </div>
+        <div class="carte" id="carte-moi">
+          <div class="carte-titre">🎙 Ma voix</div>
+          <p>Ton microphone, transcrit en continu.</p>
+          <button id="btn-moi" data-source="moi">Démarrer</button>
+          <div class="peripherique" id="periph-moi"></div>
+        </div>
+      </section>
+
+      <section class="session">
+        <h2>🎬 Session en cours</h2>
+        <div class="session-nom" id="session-nom">—</div>
+        <button id="btn-nouvelle-session">➕ Nouvelle transcription</button>
+      </section>
+
+      <section class="historique">
+        <h2>📄 Historique</h2>
+        <ul id="liste-transcripts"></ul>
+      </section>
+    </aside>
+
+    <section class="live">
+      <div class="live-entete">
+        <h2>Transcription en direct</h2>
+        <div class="etats">
+          <span class="etat-chip" id="etat-pc" hidden>🎧 PC — <em>à l'écoute</em></span>
+          <span class="etat-chip" id="etat-moi" hidden>🎙 MOI — <em>à l'écoute</em></span>
+        </div>
+      </div>
+      <div id="flux"></div>
+
+      <div class="assistant-barre">
+        <div class="assistant-boutons">
+          <button class="btn-assistant" data-action="resume">📝 Résumer</button>
+          <button class="btn-assistant" data-action="points">🔑 Points clés</button>
+          <button class="btn-assistant" data-action="actions">✅ Actions</button>
+          <span class="assistant-statut" id="assistant-statut">assistant hors ligne</span>
+        </div>
+        <div class="assistant-question">
+          <input id="champ-question" type="text" placeholder="Pose une question sur la transcription en cours…" />
+          <button id="btn-question">Envoyer</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="visionneuse">
+    <div class="visionneuse-entete">
+      <h3 id="visionneuse-titre"></h3>
+      <div class="visionneuse-actions">
+        <button id="visionneuse-renommer" title="Renommer">✏️</button>
+        <button id="visionneuse-supprimer" title="Supprimer">🗑️</button>
+        <button id="visionneuse-fermer" title="Fermer">✕</button>
+      </div>
+    </div>
+    <textarea id="visionneuse-contenu" spellcheck="false"></textarea>
+    <div class="visionneuse-pied">
+      <span id="visionneuse-etat"></span>
+      <button id="visionneuse-enregistrer">💾 Enregistrer</button>
+    </div>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>

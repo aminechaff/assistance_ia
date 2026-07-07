@@ -1,0 +1,30 @@
+# Dependencies and environments
+node_modules/
+.venv/
+venv/
+env/
+
+# Python cache/runtime files
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Local transcription output
+ecoute-pc/transcripts/
+*.wav
+
+# Local/editor files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Logs and temporary files
+*.log
+tmp/
+temp/
+
+# Local copies of the upstream Murmure project.
+# IA Assistance uses Murmure as an installed/local dependency via its HTTP API.
+murmure/
+murmure-main/
