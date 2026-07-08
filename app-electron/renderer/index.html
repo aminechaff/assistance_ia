@@ -6,80 +6,155 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <header>
-    <h1>🤖 IA Assistance</h1>
-    <div id="statut-murmure" class="pastille" title="État du moteur Murmure">
-      <span class="point"></span> Murmure
+  <header class="app-header">
+    <div class="brand">
+      <div class="brand-mark">IA</div>
+      <div>
+        <h1>IA Assistance</h1>
+        <p>Transcription locale</p>
+      </div>
+    </div>
+
+    <div class="status-strip">
+      <div id="statut-moteur" class="status-pill ok">
+        <span class="point"></span>
+        <span>Moteur</span>
+      </div>
+      <div id="statut-murmure" class="status-pill pastille" title="Etat du moteur Murmure">
+        <span class="point"></span>
+        <span>Murmure</span>
+      </div>
+      <div id="statut-ollama" class="status-pill">
+        <span class="point"></span>
+        <span>Ollama</span>
+      </div>
+      <div id="statut-pc-top" class="status-pill">
+        <span class="point"></span>
+        <span>PC</span>
+      </div>
+      <div id="statut-moi-top" class="status-pill">
+        <span class="point"></span>
+        <span>Micro</span>
+      </div>
     </div>
   </header>
 
-  <main>
-    <aside>
-      <section class="sources">
-        <div class="carte" id="carte-pc">
-          <div class="carte-titre">🎧 Écoute PC</div>
-          <p>YouTube, Discord, Teams, musique… tout ce que l'ordinateur joue.</p>
-          <button id="btn-pc" data-source="pc">Démarrer</button>
+  <div id="bandeau-murmure" class="system-banner" hidden>
+    Murmure est hors ligne. La transcription reprendra quand son API locale sera disponible.
+  </div>
+
+  <main class="app-shell">
+    <aside class="sidebar">
+      <section class="sidebar-section">
+        <div class="section-title">
+          <span>Sources</span>
+        </div>
+
+        <article class="source-card" id="carte-pc">
+          <div class="source-head">
+            <div>
+              <h2>Ecoute PC</h2>
+              <span id="source-state-pc" class="source-state">inactif</span>
+            </div>
+            <button id="btn-pc" class="source-button" data-source="pc">Demarrer</button>
+          </div>
           <div class="peripherique" id="periph-pc"></div>
-        </div>
-        <div class="carte" id="carte-moi">
-          <div class="carte-titre">🎙 Ma voix</div>
-          <p>Ton microphone, transcrit en continu.</p>
-          <button id="btn-moi" data-source="moi">Démarrer</button>
+        </article>
+
+        <article class="source-card" id="carte-moi">
+          <div class="source-head">
+            <div>
+              <h2>Ma voix</h2>
+              <span id="source-state-moi" class="source-state">inactif</span>
+            </div>
+            <button id="btn-moi" class="source-button" data-source="moi">Demarrer</button>
+          </div>
           <div class="peripherique" id="periph-moi"></div>
+        </article>
+      </section>
+
+      <section class="sidebar-section session-card">
+        <div class="section-title">
+          <span>Session</span>
+        </div>
+        <div class="session-nom" id="session-nom">-</div>
+        <div class="session-actions">
+          <button id="btn-nouvelle-session" class="secondary-button">Nouvelle transcription</button>
+          <button id="btn-vider-ecran" class="secondary-button subtle">Vider l'ecran</button>
         </div>
       </section>
 
-      <section class="session">
-        <h2>🎬 Session en cours</h2>
-        <div class="session-nom" id="session-nom">—</div>
-        <button id="btn-nouvelle-session">➕ Nouvelle transcription</button>
-      </section>
-
-      <section class="historique">
-        <h2>📄 Historique</h2>
+      <section class="sidebar-section history-card">
+        <div class="section-title">
+          <span>Historique</span>
+        </div>
+        <input id="recherche-transcripts" class="history-search" type="search" placeholder="Rechercher..." />
         <ul id="liste-transcripts"></ul>
+        <div id="historique-vide" class="empty-hint" hidden>Aucune transcription</div>
       </section>
     </aside>
 
-    <section class="live">
-      <div class="live-entete">
-        <h2>Transcription en direct</h2>
-        <div class="etats">
-          <span class="etat-chip" id="etat-pc" hidden>🎧 PC — <em>à l'écoute</em></span>
-          <span class="etat-chip" id="etat-moi" hidden>🎙 MOI — <em>à l'écoute</em></span>
+    <section class="workspace">
+      <section class="panel live-panel">
+        <div class="panel-header">
+          <div>
+            <span class="panel-kicker">Direct</span>
+            <h2>Transcription</h2>
+          </div>
+          <div class="etats">
+            <span class="etat-chip" id="etat-pc" hidden>PC <em>a l'ecoute</em></span>
+            <span class="etat-chip" id="etat-moi" hidden>Micro <em>a l'ecoute</em></span>
+          </div>
         </div>
-      </div>
-      <div id="flux"></div>
+        <div id="flux"></div>
+      </section>
 
-      <div class="assistant-barre">
-        <div class="assistant-boutons">
-          <button class="btn-assistant" data-action="resume">📝 Résumer</button>
-          <button class="btn-assistant" data-action="points">🔑 Points clés</button>
-          <button class="btn-assistant" data-action="actions">✅ Actions</button>
+      <section class="panel assistant-panel assistant-barre">
+        <div class="assistant-entete">
+          <div>
+            <span class="panel-kicker">Ollama</span>
+            <h2>Assistant IA</h2>
+            <p id="assistant-cible">Analyse la session en cours</p>
+          </div>
           <span class="assistant-statut" id="assistant-statut">assistant hors ligne</span>
         </div>
+
+        <div class="assistant-boutons">
+          <button class="btn-assistant" data-action="resume">Resume</button>
+          <button class="btn-assistant" data-action="compte_rendu">Compte-rendu</button>
+          <button class="btn-assistant" data-action="actions">Actions</button>
+          <button class="btn-assistant" data-action="points">Points cles</button>
+          <button class="btn-assistant" data-action="famille">Parent presse</button>
+          <button class="btn-assistant" data-action="etudiant">Etudiant</button>
+          <button class="btn-assistant" data-action="doctorat">Doctorat</button>
+          <button class="btn-assistant" data-action="simplifier">Simplifier</button>
+        </div>
+
         <div class="assistant-question">
-          <input id="champ-question" type="text" placeholder="Pose une question sur la transcription en cours…" />
+          <input id="champ-question" type="text" placeholder="Question sur la transcription ciblee..." />
           <button id="btn-question">Envoyer</button>
         </div>
-      </div>
+        <button id="btn-assistant-session" class="assistant-session" hidden>Revenir a la session en cours</button>
+      </section>
     </section>
   </main>
 
   <dialog id="visionneuse">
     <div class="visionneuse-entete">
-      <h3 id="visionneuse-titre"></h3>
+      <div>
+        <span class="panel-kicker">Transcription</span>
+        <h3 id="visionneuse-titre"></h3>
+      </div>
       <div class="visionneuse-actions">
-        <button id="visionneuse-renommer" title="Renommer">✏️</button>
-        <button id="visionneuse-supprimer" title="Supprimer">🗑️</button>
-        <button id="visionneuse-fermer" title="Fermer">✕</button>
+        <button id="visionneuse-renommer" title="Renommer">Renommer</button>
+        <button id="visionneuse-supprimer" title="Supprimer">Supprimer</button>
+        <button id="visionneuse-fermer" title="Fermer">Fermer</button>
       </div>
     </div>
     <textarea id="visionneuse-contenu" spellcheck="false"></textarea>
     <div class="visionneuse-pied">
       <span id="visionneuse-etat"></span>
-      <button id="visionneuse-enregistrer">💾 Enregistrer</button>
+      <button id="visionneuse-enregistrer">Enregistrer</button>
     </div>
   </dialog>
 

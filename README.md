@@ -1,111 +1,150 @@
-⚠️ Warning ! Pour l’instant, la transcription fonctionne, mais Ollama est moyen.
-
 # IA Assistance
 
-IA Assistance est un hub local de transcription audio pour Windows. Il permet d'ecouter le son du PC, le microphone, de transcrire en continu avec l'API locale de Murmure, puis d'interroger la transcription avec un assistant Ollama.
+IA Assistance est une application desktop Windows pour écouter le son du PC, écouter le microphone, transcrire en direct avec Murmure, sauvegarder les transcriptions et les analyser avec un assistant IA local via Ollama.
 
-Le projet est une couche pratique au-dessus de Murmure: interface Electron, serveur FastAPI, capture audio WASAPI loopback, historique Markdown et assistant local.
+Le dépôt GitHub officiel est :
 
-## Ce qui est inclus
+<https://github.com/aminechaff/assistance_ia>
 
-- Une interface desktop Electron dans `app-electron/`.
-- Un moteur Python FastAPI dans `ecoute-pc/`.
-- Un lanceur Windows: `IA Assistance.cmd`.
-- Un fichier `requirements.txt` pour reconstruire l'environnement Python.
-- Un README d'installation pour remettre le projet en route sur un autre PC.
+## Sommaire
 
-## Ce qui n'est pas inclus
+- [Ce que fait l'application](#ce-que-fait-lapplication)
+- [Architecture rapide](#architecture-rapide)
+- [Prérequis](#prérequis)
+- [Installation depuis le code source](#installation-depuis-le-code-source)
+- [Configuration de Murmure](#configuration-de-murmure)
+- [Configuration de Ollama](#configuration-de-ollama)
+- [Lancer l'application](#lancer-lapplication)
+- [Utilisation quotidienne](#utilisation-quotidienne)
+- [Assistant IA](#assistant-ia)
+- [Historique et fichiers générés](#historique-et-fichiers-générés)
+- [Créer une version portable `.exe`](#créer-une-version-portable-exe)
+- [Utilisation avec une release portable](#utilisation-avec-une-release-portable)
+- [Configuration technique](#configuration-technique)
+- [Dépannage](#dépannage)
+- [Développement](#développement)
+- [Structure du projet](#structure-du-projet)
+- [Ce qui ne doit pas être versionné](#ce-qui-ne-doit-pas-être-versionné)
+- [Remerciements](#remerciements)
 
-Ces elements ne sont pas envoyes dans le depot, volontairement:
+## Ce que fait l'application
 
-- `node_modules/`: dependances Electron, a recreer avec `npm install`.
-- `ecoute-pc/.venv/`: environnement Python local, a recreer avec `python -m venv .venv`.
-- `ecoute-pc/transcripts/`: transcriptions personnelles/locales.
-- `murmure/`: projet externe complet. IA Assistance utilise Murmure via son API locale.
-- `__pycache__/`: fichiers generes par Python.
+IA Assistance sert de hub local autour de Murmure et Ollama.
 
-Le depot est donc un projet source propre, pas encore une application portable autonome.
+Fonctions principales :
 
-## Fonctionnalites
+- écouter le son du PC avec WASAPI loopback ;
+- écouter le microphone ;
+- envoyer les segments audio à l'API locale de Murmure ;
+- afficher la transcription en direct ;
+- sauvegarder chaque session en Markdown ;
+- ouvrir, renommer, modifier et supprimer les transcriptions ;
+- poser des questions à un assistant IA local ;
+- produire des résumés, comptes-rendus, points clés, actions, fiches étudiant, analyses doctorat et versions simplifiées ;
+- suspendre automatiquement l'écoute pendant qu'Ollama répond, puis reprendre l'écoute ensuite ;
+- afficher clairement les statuts de Murmure, Ollama, du moteur Python, du PC et du micro.
 
-- Ecoute du son du PC: YouTube, Discord, Teams, musique, navigateur, etc.
-- Ecoute du microphone.
-- Transcription en direct via Murmure en local.
-- Historique des transcriptions en fichiers Markdown.
-- Renommage, edition et suppression des transcriptions depuis l'interface.
-- Assistant local via Ollama pour resumer, extraire les points cles, lister les actions ou poser une question.
-- Lancement simple avec `IA Assistance.cmd` une fois l'installation faite.
+Le projet est pensé pour rester local : l'audio, les transcriptions et l'assistant tournent sur la machine, à condition que Murmure et Ollama soient lancés localement.
 
-## Architecture
+## Architecture rapide
 
 ```text
 IA Assistance.cmd
   -> app-electron/
       -> interface desktop Electron
-      -> demarre ecoute-pc/serveur.py
+      -> lance le moteur Python
 
 ecoute-pc/
-  -> FastAPI sur http://127.0.0.1:4900
-  -> capture audio PC/micro avec PyAudioWPatch
-  -> envoie les segments WAV a Murmure
-  -> diffuse le live en WebSocket
+  -> serveur FastAPI sur http://127.0.0.1:4900
+  -> capture audio PC et micro
+  -> découpe en segments de parole
+  -> envoie les WAV à Murmure
+  -> diffuse les résultats à Electron en WebSocket
   -> sauvegarde les transcriptions dans ecoute-pc/transcripts/
 
 Murmure
-  -> API locale sur http://127.0.0.1:4800/api/transcribe
+  -> application externe
+  -> API locale attendue sur http://127.0.0.1:4800/api/transcribe
 
 Ollama
-  -> API locale sur http://127.0.0.1:11434
+  -> application externe
+  -> API locale attendue sur http://127.0.0.1:11434
 ```
 
-## Prerequis
+Important : IA Assistance ne remplace pas Murmure. Pour l'instant, elle s'appuie sur Murmure pour faire la transcription audio.
 
-Pour installer IA Assistance sur un nouveau PC, il faut:
+## Prérequis
 
-- Windows 10 ou plus recent.
-- Git, optionnel mais recommande: https://git-scm.com/downloads
-- Node.js LTS avec npm: https://nodejs.org/
-- Python 3.11 ou plus recent: https://www.python.org/downloads/
-- Murmure installe et lance: https://github.com/Kieirra/murmure/releases
-- Ollama, optionnel pour l'assistant: https://ollama.com/
+### Système
 
-Pendant l'installation de Python, cocher l'option `Add python.exe to PATH`.
+- Windows 10 ou Windows 11.
+- Une sortie audio fonctionnelle pour l'écoute PC.
+- Un microphone fonctionnel pour l'écoute voix.
 
-## Installation complete sur un nouveau PC
+### Outils nécessaires pour installer depuis le code source
 
-Si tu telecharges une Release `.exe`, va directement a la section [Utilisation avec une Release](#utilisation-avec-une-release).
+- Git : <https://git-scm.com/downloads>
+- Node.js LTS avec npm : <https://nodejs.org/>
+- Python 3.11 ou plus récent : <https://www.python.org/downloads/>
+- Murmure : <https://github.com/Kieirra/murmure/releases>
+- Ollama, optionnel mais recommandé pour l'assistant IA : <https://ollama.com/>
 
-### 1. Recuperer le projet
+Pendant l'installation de Python, coche l'option :
 
-Avec Git:
+```text
+Add python.exe to PATH
+```
+
+### Vérifier les outils
+
+Dans PowerShell :
+
+```powershell
+git --version
+node --version
+npm --version
+python --version
+```
+
+Si une commande n'est pas reconnue, l'outil correspondant n'est pas installé ou n'est pas dans le `PATH`.
+
+## Installation depuis le code source
+
+### 1. Récupérer le projet
+
+Avec Git :
 
 ```powershell
 git clone https://github.com/aminechaff/assistance_ia.git
 cd assistance_ia
 ```
 
-Sans Git:
+Sans Git :
 
-1. Aller sur la page GitHub du projet.
+1. Ouvrir <https://github.com/aminechaff/assistance_ia>.
 2. Cliquer sur `Code`.
 3. Cliquer sur `Download ZIP`.
 4. Extraire le ZIP.
 5. Ouvrir PowerShell dans le dossier extrait.
 
-### 2. Installer les dependances Electron
+### 2. Installer les dépendances Electron
 
-Depuis la racine du projet:
+Depuis la racine du projet :
 
 ```powershell
 cd app-electron
 npm install
 ```
 
-Cette commande recree `app-electron/node_modules/`.
+Cette commande recrée le dossier :
 
-### 3. Installer les dependances Python
+```text
+app-electron/node_modules/
+```
 
-Toujours depuis `app-electron`, revenir dans `ecoute-pc`:
+### 3. Installer les dépendances Python
+
+Depuis `app-electron`, revenir dans le dossier Python :
 
 ```powershell
 cd ..\ecoute-pc
@@ -114,216 +153,546 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-Cette etape recree `ecoute-pc/.venv/`.
+Cette commande recrée le dossier :
 
-### 4. Installer et preparer Murmure
+```text
+ecoute-pc/.venv/
+```
 
-1. Telecharger Murmure depuis les releases officielles: https://github.com/Kieirra/murmure/releases
+## Configuration de Murmure
+
+IA Assistance utilise Murmure pour transcrire l'audio. Murmure doit être installé, lancé et configuré avec son API locale.
+
+Étapes :
+
+1. Télécharger Murmure depuis <https://github.com/Kieirra/murmure/releases>.
 2. Installer Murmure.
 3. Lancer Murmure.
-4. Ouvrir les parametres de Murmure.
-5. Aller dans les parametres systeme.
+4. Ouvrir les paramètres de Murmure.
+5. Aller dans les paramètres système.
 6. Activer l'API locale.
-7. Verifier que le port de l'API locale est `4800`.
+7. Vérifier que le port est `4800`.
 
-IA Assistance ne transcrit pas directement l'audio: il envoie les segments audio a Murmure sur:
+L'URL attendue par IA Assistance est :
 
 ```text
 http://127.0.0.1:4800/api/transcribe
 ```
 
-### 5. Installer Ollama, optionnel
+Si Murmure est fermé ou si l'API locale est désactivée, le statut Murmure devient hors ligne dans IA Assistance.
 
-Ollama est seulement necessaire pour les boutons assistant: `Resumer`, `Points cles`, `Actions` et les questions.
+## Configuration de Ollama
 
-Installer Ollama: https://ollama.com/
+Ollama est utilisé pour l'assistant IA : résumés, questions, actions, compte-rendu, version étudiant, doctorat, etc.
 
-Puis installer le modele attendu par defaut:
+### 1. Installer Ollama
+
+Télécharger Ollama depuis :
+
+<https://ollama.com/>
+
+Lancer Ollama après installation.
+
+### 2. Installer le modèle par défaut
+
+Le modèle attendu par défaut est :
+
+```text
+qwen3.5:4b
+```
+
+Commande :
 
 ```powershell
 ollama pull qwen3.5:4b
 ```
 
-Verifier qu'Ollama est lance. Son API doit repondre sur:
+### 3. Vérifier Ollama
+
+```powershell
+ollama list
+```
+
+L'API locale attendue par IA Assistance est :
 
 ```text
 http://127.0.0.1:11434
 ```
 
-### 6. Lancer IA Assistance
+Si Ollama n'est pas lancé ou si le modèle n'est pas installé, l'assistant sera indiqué comme hors ligne ou indisponible.
 
-Revenir a la racine du projet, puis double-cliquer sur:
+## Lancer l'application
+
+### Méthode simple
+
+Depuis la racine du projet, double-cliquer sur :
 
 ```text
 IA Assistance.cmd
 ```
 
-Le fichier lance Electron, et Electron demarre automatiquement le serveur Python `ecoute-pc/serveur.py`.
+Ce fichier lance Electron, et Electron démarre automatiquement le moteur Python.
 
-Si tout est pret:
+### Méthode PowerShell
 
-- la fenetre IA Assistance s'ouvre;
-- le statut Murmure passe au vert;
-- les boutons `Ecoute PC` et `Ma voix` peuvent demarrer l'enregistrement;
-- les transcriptions apparaissent en direct;
-- les fichiers Markdown sont crees dans `ecoute-pc/transcripts/`.
-
-## Utilisation
-
-1. Lancer Murmure et verifier que l'API locale est activee.
-2. Lancer Ollama si les fonctions assistant sont souhaitees.
-3. Lancer `IA Assistance.cmd`.
-4. Cliquer sur `Demarrer` dans `Ecoute PC` pour transcrire le son de l'ordinateur.
-5. Cliquer sur `Demarrer` dans `Ma voix` pour transcrire le micro.
-6. Utiliser l'historique pour ouvrir, modifier, renommer ou supprimer une transcription.
-
-## Utilisation avec une Release
-
-Une Release GitHub peut contenir un fichier du type:
-
-```text
-IA Assistance-0.1.0-portable.exe
-```
-
-Dans ce mode, ton frere n'a pas besoin d'installer Node.js, npm, Python, la venv ou les dependances Python. Tout cela est deja package dans l'executable.
-
-Il doit quand meme installer et lancer:
-
-- Murmure, avec l'API locale activee sur le port `4800`.
-- Ollama, seulement s'il veut utiliser les fonctions assistant.
-
-Etapes pour lui:
-
-1. Installer Murmure depuis https://github.com/Kieirra/murmure/releases
-2. Lancer Murmure.
-3. Activer l'API locale de Murmure sur le port `4800`.
-4. Telecharger `IA Assistance-0.1.0-portable.exe` depuis les Releases de ce depot.
-5. Double-cliquer sur l'executable.
-
-Optionnel pour l'assistant:
-
-```powershell
-ollama pull qwen3.5:4b
-```
-
-## Creer une Release `.exe`
-
-Pour generer le fichier `.exe` depuis le code source:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\build-release.ps1
-```
-
-Le script fait automatiquement:
-
-1. installation/mise a jour des dependances Python;
-2. build du serveur Python avec PyInstaller;
-3. installation des dependances Electron;
-4. build de l'application portable avec electron-builder.
-
-Le fichier final est cree ici:
-
-```text
-app-electron\dist\IA Assistance-0.1.0-portable.exe
-```
-
-Pour le publier:
-
-1. Aller sur GitHub.
-2. Ouvrir le depot `assistance_ia`.
-3. Cliquer sur `Releases`.
-4. Cliquer sur `Create a new release`.
-5. Creer un tag, par exemple `v0.1.0`.
-6. Donner un titre, par exemple `IA Assistance 0.1.0`.
-7. Ajouter le fichier `app-electron\dist\IA Assistance-0.1.0-portable.exe` dans les assets.
-8. Publier la release.
-
-Important: cet executable ne contient pas Murmure et ne contient pas Ollama. Il contient seulement IA Assistance, son interface Electron et son moteur Python.
-
-## Configuration
-
-Les valeurs importantes sont actuellement definies dans le code:
-
-| Element | Valeur par defaut | Fichier |
-| --- | --- | --- |
-| API Murmure | `http://127.0.0.1:4800/api/transcribe` | `ecoute-pc/moteur.py` |
-| Serveur IA Assistance | `http://127.0.0.1:4900` | `ecoute-pc/serveur.py` et `app-electron/renderer/app.js` |
-| API Ollama | `http://127.0.0.1:11434` | `ecoute-pc/serveur.py` |
-| Modele assistant | `qwen3.5:4b` | `ecoute-pc/serveur.py` |
-
-Si tu changes le port de l'API Murmure dans Murmure, il faut aussi changer `MURMURE_API` dans `ecoute-pc/moteur.py`.
-
-Si tu changes le port du serveur IA Assistance, il faut changer la valeur dans `ecoute-pc/serveur.py` et dans `app-electron/renderer/app.js`.
-
-Si tu veux utiliser un autre modele Ollama, changer `MODELE_ASSISTANT` dans `ecoute-pc/serveur.py`, puis installer le modele avec `ollama pull`.
-
-## Depannage
-
-### `python` n'est pas reconnu
-
-Python n'est pas dans le PATH. Reinstaller Python en cochant `Add python.exe to PATH`, ou utiliser le chemin complet vers `python.exe`.
-
-### `npm` n'est pas reconnu
-
-Node.js n'est pas installe ou pas dans le PATH. Installer Node.js LTS depuis https://nodejs.org/, puis rouvrir PowerShell.
-
-### Le statut Murmure reste rouge
-
-Verifier que:
-
-- Murmure est lance;
-- l'API locale est activee dans Murmure;
-- le port est bien `4800`;
-- aucun pare-feu ou antivirus ne bloque `127.0.0.1:4800`.
-
-### L'ecoute PC ne demarre pas
-
-Verifier que le PC utilise bien Windows et que le peripherique audio de sortie par defaut fonctionne. La capture PC utilise WASAPI loopback via PyAudioWPatch.
-
-### L'assistant indique Ollama hors ligne
-
-Verifier que:
-
-- Ollama est installe;
-- Ollama est lance;
-- le modele est installe avec `ollama pull qwen3.5:4b`;
-- l'API Ollama repond sur `http://127.0.0.1:11434`.
-
-### Le port `4900` est deja utilise
-
-Fermer l'autre instance de IA Assistance ou l'autre programme qui utilise ce port. Le serveur Python ecoute sur `127.0.0.1:4900`.
-
-## Developpement
-
-Lancer seulement l'interface Electron:
+Depuis la racine du projet :
 
 ```powershell
 cd app-electron
 npm start
 ```
 
-Lancer seulement le serveur Python:
+Si tout est prêt :
+
+- la fenêtre IA Assistance s'ouvre ;
+- le statut `Moteur` passe au vert ;
+- le statut `Murmure` passe au vert si Murmure est lancé ;
+- le statut `Ollama` passe au vert si Ollama et le modèle sont prêts ;
+- les boutons `Ecoute PC` et `Ma voix` peuvent démarrer l'écoute.
+
+## Utilisation quotidienne
+
+### 1. Démarrer les services externes
+
+Avant d'utiliser IA Assistance :
+
+1. Lancer Murmure.
+2. Vérifier que l'API locale de Murmure est activée sur le port `4800`.
+3. Lancer Ollama si l'assistant IA est souhaité.
+4. Lancer IA Assistance.
+
+### 2. Transcrire le son du PC
+
+Cliquer sur :
+
+```text
+Ecoute PC -> Demarrer
+```
+
+Cela capture ce que l'ordinateur joue : navigateur, YouTube, Discord, Teams, musique, vidéo, etc.
+
+### 3. Transcrire le micro
+
+Cliquer sur :
+
+```text
+Ma voix -> Demarrer
+```
+
+Cela capture le microphone par défaut.
+
+### 4. Lire la transcription en direct
+
+La zone centrale affiche les lignes transcrites avec :
+
+- la source (`PC`, `Micro`, `Assistant`) ;
+- l'heure ;
+- le texte transcrit ;
+- les réponses de l'assistant IA.
+
+### 5. Créer une nouvelle transcription
+
+Cliquer sur :
+
+```text
+Nouvelle transcription
+```
+
+Tu peux entrer un nom ou laisser vide pour générer un nom basé sur la date et l'heure.
+
+### 6. Vider l'écran
+
+Cliquer sur :
+
+```text
+Vider l'ecran
+```
+
+Cela vide seulement l'affichage en direct. Le fichier Markdown de transcription n'est pas supprimé.
+
+### 7. Ouvrir l'historique
+
+Dans la colonne de gauche :
+
+- rechercher une transcription ;
+- cliquer sur une ancienne session ;
+- lire le contenu ;
+- modifier ;
+- renommer ;
+- supprimer.
+
+Quand une transcription est ouverte depuis l'historique, l'assistant IA peut analyser cette transcription précise.
+
+## Assistant IA
+
+L'assistant IA est local et s'appuie sur Ollama.
+
+Modes disponibles :
+
+| Mode | Utilité |
+| --- | --- |
+| `Resume` | Obtenir une synthèse claire |
+| `Compte-rendu` | Transformer la transcription en compte-rendu structuré |
+| `Actions` | Extraire les tâches, décisions, personnes et échéances |
+| `Points cles` | Lister les éléments importants |
+| `Parent presse` | Expliquer vite et simplement |
+| `Etudiant` | Produire une fiche de révision |
+| `Doctorat` | Analyser avec un niveau recherche |
+| `Simplifier` | Reformuler en langage simple |
+| Question libre | Poser une question personnalisée |
+
+Pendant une demande à l'assistant :
+
+- un indicateur visuel montre que Ollama réfléchit ;
+- l'écoute PC et micro est suspendue si elle était active ;
+- l'écoute reprend automatiquement après la réponse ;
+- les étapes de raisonnement internes du modèle sont filtrées ;
+- la réponse finale est affichée en français.
+
+## Historique et fichiers générés
+
+Les transcriptions sont sauvegardées ici :
+
+```text
+ecoute-pc/transcripts/
+```
+
+Chaque transcription est un fichier Markdown `.md`.
+
+Exemple :
+
+```text
+ecoute-pc/transcripts/2026-07-08_23h31.md
+```
+
+Ces fichiers sont locaux et personnels. Ils ne doivent pas être envoyés dans GitHub.
+
+## Créer une version portable `.exe`
+
+Pour générer une version portable depuis le code source :
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\build-release.ps1
+```
+
+Le script :
+
+1. vérifie ou crée l'environnement Python ;
+2. installe les dépendances Python ;
+3. installe PyInstaller ;
+4. compile le moteur Python ;
+5. installe les dépendances Electron ;
+6. construit l'application portable avec `electron-builder`.
+
+Le fichier final est créé ici :
+
+```text
+app-electron\dist\IA Assistance-0.1.0-portable.exe
+```
+
+Important :
+
+- l'exécutable contient IA Assistance ;
+- il ne contient pas Murmure ;
+- il ne contient pas Ollama ;
+- il faut toujours installer Murmure séparément ;
+- Ollama reste nécessaire pour l'assistant IA.
+
+## Utilisation avec une release portable
+
+Si une release GitHub contient :
+
+```text
+IA Assistance-0.1.0-portable.exe
+```
+
+Alors l'utilisateur n'a pas besoin d'installer :
+
+- Node.js ;
+- npm ;
+- Python ;
+- les dépendances Python ;
+- les dépendances Electron.
+
+Il doit quand même installer :
+
+- Murmure, avec l'API locale activée ;
+- Ollama, seulement s'il veut utiliser l'assistant IA.
+
+Étapes pour un utilisateur non développeur :
+
+1. Installer Murmure depuis <https://github.com/Kieirra/murmure/releases>.
+2. Lancer Murmure.
+3. Activer l'API locale de Murmure sur le port `4800`.
+4. Installer Ollama depuis <https://ollama.com/> si l'assistant IA est souhaité.
+5. Installer le modèle :
+
+```powershell
+ollama pull qwen3.5:4b
+```
+
+6. Télécharger l'exécutable portable depuis les releases du dépôt.
+7. Double-cliquer sur l'exécutable.
+
+## Configuration technique
+
+Les valeurs importantes sont actuellement définies dans le code.
+
+| Élément | Valeur par défaut | Fichier |
+| --- | --- | --- |
+| API Murmure | `http://127.0.0.1:4800/api/transcribe` | `ecoute-pc/moteur.py` |
+| Serveur IA Assistance | `http://127.0.0.1:4900` | `ecoute-pc/serveur.py` |
+| API côté interface | `http://127.0.0.1:4900` | `app-electron/renderer/app.js` |
+| WebSocket live | `ws://127.0.0.1:4900/live` | `app-electron/renderer/app.js` |
+| API Ollama | `http://127.0.0.1:11434` | `ecoute-pc/serveur.py` |
+| Modèle assistant | `qwen3.5:4b` | `ecoute-pc/serveur.py` |
+| Dossier transcriptions | `ecoute-pc/transcripts/` | `ecoute-pc/moteur.py` |
+
+Si tu changes un port, il faut mettre à jour les fichiers correspondants.
+
+## Dépannage
+
+### `python` n'est pas reconnu
+
+Python n'est pas installé ou n'est pas dans le `PATH`.
+
+Solutions :
+
+- réinstaller Python en cochant `Add python.exe to PATH` ;
+- fermer et rouvrir PowerShell ;
+- utiliser le chemin complet vers `python.exe`.
+
+### `npm` n'est pas reconnu
+
+Node.js n'est pas installé ou n'est pas dans le `PATH`.
+
+Solution :
+
+1. Installer Node.js LTS depuis <https://nodejs.org/>.
+2. Fermer et rouvrir PowerShell.
+3. Vérifier :
+
+```powershell
+npm --version
+```
+
+### Murmure reste hors ligne
+
+Vérifier que :
+
+- Murmure est lancé ;
+- l'API locale est activée ;
+- le port est `4800` ;
+- aucun pare-feu ne bloque `127.0.0.1:4800` ;
+- l'URL attendue est bien `http://127.0.0.1:4800/api/transcribe`.
+
+### Ollama reste hors ligne
+
+Vérifier que :
+
+- Ollama est installé ;
+- Ollama est lancé ;
+- le modèle est installé ;
+- l'API répond sur `127.0.0.1:11434`.
+
+Commandes utiles :
+
+```powershell
+ollama list
+ollama pull qwen3.5:4b
+```
+
+### L'assistant répond lentement
+
+Ollama tourne localement. La vitesse dépend :
+
+- du modèle utilisé ;
+- du processeur ;
+- de la mémoire ;
+- de la longueur de la transcription ;
+- de l'activité de la machine.
+
+IA Assistance affiche un indicateur pendant l'attente et filtre les étapes de raisonnement du modèle quand elles apparaissent.
+
+### L'écoute PC ne démarre pas
+
+La capture PC utilise WASAPI loopback via PyAudioWPatch.
+
+Vérifier que :
+
+- l'application tourne sur Windows ;
+- un périphérique de sortie audio est actif ;
+- du son est en train de jouer ;
+- le périphérique de sortie par défaut est correct ;
+- aucun autre logiciel ne bloque l'accès audio.
+
+### Le micro ne démarre pas
+
+Vérifier que :
+
+- le micro est branché ;
+- Windows autorise l'accès au micro ;
+- le micro par défaut est le bon ;
+- le micro fonctionne dans une autre application.
+
+### Le port `4900` est déjà utilisé
+
+IA Assistance utilise :
+
+```text
+http://127.0.0.1:4900
+```
+
+Si le port est déjà pris :
+
+- fermer l'autre instance de IA Assistance ;
+- fermer le programme qui utilise le port ;
+- redémarrer l'application.
+
+### L'application ne s'ouvre pas avec `IA Assistance.cmd`
+
+Essayer en PowerShell :
+
+```powershell
+cd app-electron
+npm start
+```
+
+Si cela échoue, vérifier que `npm install` a bien été lancé.
+
+## Développement
+
+### Lancer seulement le serveur Python
 
 ```powershell
 cd ecoute-pc
 .\.venv\Scripts\python.exe serveur.py
 ```
 
-Verifier rapidement les fichiers Python:
+### Lancer seulement l'interface Electron
+
+Dans un autre PowerShell :
+
+```powershell
+cd app-electron
+npm start
+```
+
+En pratique, `npm start` lance Electron, et Electron lance le serveur Python automatiquement.
+
+### Vérifier rapidement les fichiers Python
 
 ```powershell
 cd ecoute-pc
 .\.venv\Scripts\python.exe -m py_compile ecoute_pc.py moteur.py serveur.py
 ```
 
+### Vérifier rapidement le JavaScript renderer
+
+Depuis la racine :
+
+```powershell
+node --check app-electron\renderer\app.js
+```
+
+## Structure du projet
+
+```text
+assistance_ia/
+  IA Assistance.cmd
+  README.md
+  scripts/
+    build-release.ps1
+
+  app-electron/
+    main.js
+    package.json
+    package-lock.json
+    renderer/
+      index.html
+      style.css
+      app.js
+
+  ecoute-pc/
+    requirements.txt
+    serveur.py
+    moteur.py
+    ecoute_pc.py
+```
+
+Rôle des principaux fichiers :
+
+| Fichier | Rôle |
+| --- | --- |
+| `IA Assistance.cmd` | Lance l'application Electron depuis la racine |
+| `app-electron/main.js` | Crée la fenêtre Electron et lance le moteur Python |
+| `app-electron/renderer/index.html` | Structure de l'interface |
+| `app-electron/renderer/style.css` | Apparence de l'application |
+| `app-electron/renderer/app.js` | Logique UI, appels API, WebSocket, assistant |
+| `ecoute-pc/serveur.py` | API FastAPI, historique, assistant Ollama |
+| `ecoute-pc/moteur.py` | Capture audio, découpage, appel Murmure |
+| `ecoute-pc/ecoute_pc.py` | Ancien mode CLI / script autonome d'écoute PC |
+| `scripts/build-release.ps1` | Génération de l'exécutable portable |
+
+## Ce qui ne doit pas être versionné
+
+Ces dossiers et fichiers sont générés localement et ignorés par Git :
+
+```text
+app-electron/node_modules/
+app-electron/dist/
+ecoute-pc/.venv/
+ecoute-pc/build/
+ecoute-pc/dist/
+ecoute-pc/__pycache__/
+ecoute-pc/transcripts/
+murmure/
+```
+
+Pourquoi :
+
+- `node_modules/` se recrée avec `npm install` ;
+- `.venv/` se recrée avec `python -m venv .venv` ;
+- `build/` et `dist/` sont des sorties de compilation ;
+- `transcripts/` contient des données personnelles ;
+- `murmure/` est une copie locale externe, pas le code source de IA Assistance.
+
+## Limites actuelles
+
+- L'application cible Windows.
+- Murmure doit être installé séparément.
+- Ollama doit être installé séparément pour l'assistant IA.
+- La qualité et la vitesse de l'assistant dépendent du modèle Ollama et du PC.
+- Les ports sont encore configurés dans le code.
+
+## Feuille de route possible
+
+Améliorations possibles :
+
+- rendre les ports configurables depuis l'interface ;
+- choisir le modèle Ollama depuis l'interface ;
+- exporter les transcriptions en PDF ;
+- ajouter une recherche plein texte dans les transcriptions ;
+- ajouter une synthèse automatique en fin de session ;
+- intégrer un moteur de transcription directement dans IA Assistance ;
+- créer un installateur plus simple pour les utilisateurs non techniques.
+
 ## Remerciements
 
-Un tres grand merci a [Kieirra/murmure](https://github.com/Kieirra/murmure). IA Assistance s'appuie sur Murmure comme base de transcription locale: sans ce projet open source, ce hub n'aurait pas le meme sens ni la meme qualite.
+Merci à [Kieirra/murmure](https://github.com/Kieirra/murmure). IA Assistance s'appuie sur Murmure pour la transcription locale.
 
-Merci egalement aux projets open source utilises dans cette couche: Electron, FastAPI, PyAudioWPatch, NumPy, Requests, Uvicorn et Ollama.
+Merci aussi aux projets utilisés dans cette couche :
+
+- Electron ;
+- FastAPI ;
+- PyAudioWPatch ;
+- NumPy ;
+- Requests ;
+- Uvicorn ;
+- Ollama ;
+- PyInstaller ;
+- electron-builder.
 
 ## Note importante
 
-Ce depot ne vend pas et ne remplace pas Murmure. Il fournit une interface et un moteur d'ecoute autour de l'API locale de Murmure.
-
-Les transcriptions locales, les environnements virtuels, `node_modules` et les copies locales de Murmure sont ignores par Git.
+IA Assistance est un projet local d'assistance personnelle. Il ne vend pas Murmure, ne remplace pas Murmure et ne fournit pas Ollama. Il ajoute une interface, une capture audio PC/micro, un historique et un assistant IA autour de services locaux existants.

@@ -106,6 +106,10 @@ class Transcripteur(threading.Thread):
                 )
                 reponse.raise_for_status()
                 texte = reponse.json().get("text", "").strip()
+            except requests.ConnectionError:
+                # Murmure fermé ou API désactivée : on signale l'état, sans polluer le flux
+                self.on_evenement({"type": "murmure", "disponible": False})
+                continue
             except Exception as e:
                 self.on_evenement({"type": "ligne", "heure": f"{horodatage:%H:%M:%S}", "source": "erreur", "texte": str(e)})
                 continue

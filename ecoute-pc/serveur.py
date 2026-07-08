@@ -14,6 +14,7 @@ Serveur de pilotage du moteur d'écoute — l'app Electron s'y connecte.
 import asyncio
 import json
 import queue
+import re
 from pathlib import Path
 
 import requests
@@ -25,12 +26,118 @@ import moteur
 
 OLLAMA = "http://127.0.0.1:11434"
 MODELE_ASSISTANT = "qwen3.5:4b"
+MAX_TRANSCRIPTION_CHARS = 24000
+BALISE_REFLEXION = re.compile(r"<think\b[^>]*>.*?</think>", re.IGNORECASE | re.DOTALL)
 
 PROMPTS_ASSISTANT = {
-    "resume": "Résume cette transcription en français, de façon claire et structurée. Va à l'essentiel.",
-    "points": "Liste les points clés de cette transcription en français, sous forme de puces courtes.",
-    "actions": "Liste les actions à faire / décisions prises mentionnées dans cette transcription, en français. S'il n'y en a aucune, dis-le simplement.",
+    "resume": (
+        "Produit un résumé clair et utile de cette transcription. "
+        "Structure la réponse avec: Résumé court, Détails importants, Conclusion."
+    ),
+    "points": (
+        "Extrais les points clés. Classe-les par thèmes si possible. "
+        "Chaque point doit être court, concret et compréhensible sans relire toute la transcription."
+    ),
+    "actions": (
+        "Liste les actions à faire, décisions prises, échéances et personnes concernées. "
+        "Si une information manque, écris 'Non précisé' plutôt que d'inventer."
+    ),
+    "compte_rendu": (
+        "Transforme cette transcription en compte-rendu propre. "
+        "Utilise les sections: Contexte, Sujets abordés, Décisions, Actions à suivre, Points ouverts."
+    ),
+    "famille": (
+        "Explique cette transcription comme à un parent occupé qui veut comprendre vite. "
+        "Sois simple, chaleureux, pratique. Termine par 'Ce que je dois retenir'."
+    ),
+    "etudiant": (
+        "Transforme cette transcription en fiche de révision pour étudiant. "
+        "Utilise: Notions importantes, Définitions, Plan logique, Questions possibles, À mémoriser."
+    ),
+    "doctorat": (
+        "Analyse cette transcription pour un profil recherche/doctorat. "
+        "Fais ressortir problématique, hypothèses, méthode, limites, concepts, pistes de recherche et références à vérifier."
+    ),
+    "simplifier": (
+        "Réécris les idées principales en langage très simple, sans jargon inutile. "
+        "Ajoute une analogie courte si elle aide vraiment."
+    ),
 }
+
+
+def preparer_transcription(contenu: str) -> tuple[str, bool]:
+    contenu = contenu.strip()
+    if len(contenu) <= MAX_TRANSCRIPTION_CHARS:
+        return contenu, False
+    debut = contenu[: MAX_TRANSCRIPTION_CHARS // 2]
+    fin = contenu[-MAX_TRANSCRIPTION_CHARS // 2 :]
+    extrait = (
+        debut
+        + "\n\n[... transcription raccourcie pour rester dans le contexte du modèle ...]\n\n"
+        + fin
+    )
+    return extrait, True
+
+
+def nettoyer_reponse_assistant(texte: str) -> str:
+    texte = BALISE_REFLEXION.sub("", texte)
+    texte = texte.replace("<think>", "").replace("</think>", "")
+    return texte
+
+
+def morceaux_visibles_ollama(reponse):
+    """Filtre le raisonnement interne des modèles qui l'exposent malgré les consignes."""
+    dans_reflexion = False
+    tampon = ""
+
+    for brut in reponse.iter_lines():
+        if not brut:
+            continue
+        morceau = json.loads(brut)
+        message = morceau.get("message", {})
+        texte = message.get("content", "")
+        if not texte:
+            continue
+
+        tampon += texte
+        while tampon:
+            minuscule = tampon.lower()
+            if dans_reflexion:
+                fin = minuscule.find("</think>")
+                if fin == -1:
+                    tampon = tampon[-16:]
+                    break
+                tampon = tampon[fin + len("</think>") :]
+                dans_reflexion = False
+                continue
+
+            debut = minuscule.find("<think")
+            fin_orpheline = minuscule.find("</think>")
+            if fin_orpheline != -1 and (debut == -1 or fin_orpheline < debut):
+                tampon = tampon[fin_orpheline + len("</think>") :]
+                continue
+            if debut == -1:
+                retenu = ""
+                for prefixe in ("<think", "<thin", "<thi", "<th", "<t", "<"):
+                    if minuscule.endswith(prefixe):
+                        retenu = tampon[-len(prefixe) :]
+                        tampon = tampon[: -len(prefixe)]
+                        break
+                visible = nettoyer_reponse_assistant(tampon)
+                tampon = retenu
+                if visible:
+                    yield visible
+                break
+
+            visible = nettoyer_reponse_assistant(tampon[:debut])
+            if visible:
+                yield visible
+            fermeture = minuscule.find(">", debut)
+            if fermeture == -1:
+                tampon = tampon[debut:]
+                break
+            tampon = tampon[fermeture + 1 :]
+            dans_reflexion = True
 
 app = FastAPI(title="IA Assistance — moteur d'écoute")
 
@@ -156,10 +263,11 @@ def supprimer_transcript(nom: str):
     fichier = _fichier_transcript(nom)
     if not fichier.exists():
         raise HTTPException(404, "fichier introuvable")
+    etait_actif = transcripteur.fichier_actif == fichier
     fichier.unlink()
-    if transcripteur.fichier_actif == fichier:
+    if etait_actif:
         transcripteur.fichier_actif = None  # une nouvelle session se créera à la prochaine ligne
-    return {"ok": True}
+    return {"ok": True, "etait_actif": etait_actif}
 
 
 @app.get("/assistant/disponible")
@@ -174,7 +282,7 @@ def assistant_disponible():
 
 @app.post("/assistant")
 def assistant(corps: dict):
-    """corps = {"action": resume|points|actions|question, "nom": fichier, "question": "..."}"""
+    """corps = {"action": ..., "nom": fichier optionnel, "question": "..."}"""
     action = corps.get("action")
     nom = corps.get("nom")
     if not nom:
@@ -185,13 +293,17 @@ def assistant(corps: dict):
     fichier = _fichier_transcript(nom)
     if not fichier.exists():
         raise HTTPException(404, "fichier introuvable")
-    contenu = fichier.read_text(encoding="utf-8")
+    contenu, tronque = preparer_transcription(fichier.read_text(encoding="utf-8"))
 
     if action == "question":
         consigne = corps.get("question", "").strip()
         if not consigne:
             raise HTTPException(400, "question vide")
-        consigne = f"Réponds en français à cette question sur la transcription : {consigne}"
+        consigne = (
+            "Réponds à cette question sur la transcription. "
+            "Adapte ton niveau de détail à la question, puis termine par une réponse courte en une phrase. "
+            f"Question: {consigne}"
+        )
     elif action in PROMPTS_ASSISTANT:
         consigne = PROMPTS_ASSISTANT[action]
     else:
@@ -199,27 +311,66 @@ def assistant(corps: dict):
 
     def generer():
         try:
-            with requests.post(
-                f"{OLLAMA}/api/chat",
-                json={
-                    "model": MODELE_ASSISTANT,
-                    "stream": True,
-                    "messages": [
-                        {"role": "system", "content": "Tu es l'assistant d'une application de transcription audio. Tu réponds toujours en français, sans balises <think>."},
-                        {"role": "user", "content": f"{consigne}\n\n<transcription>\n{contenu}\n</transcription>"},
-                    ],
+            requete = {
+                "model": MODELE_ASSISTANT,
+                "stream": True,
+                "think": False,
+                "options": {
+                    "temperature": 0.2,
                 },
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": (
+                            "Tu es l'assistant universel d'une application de transcription audio. "
+                            "Tu aides aussi bien un parent pressé, un étudiant, un professionnel, "
+                            "qu'un doctorant. Tu réponds toujours en français, avec un ton clair, "
+                            "direct et utile. Tu ne dois pas inventer les informations absentes. "
+                            "Si une transcription est confuse, tu le dis et tu proposes une lecture probable. "
+                            "Tu donnes uniquement la réponse finale. "
+                            "N'écris jamais de balise <think>, de plan de réflexion, de brouillon, "
+                            "ni d'étapes de raisonnement interne."
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Fichier analysé: {fichier.name}\n"
+                            f"Transcription raccourcie: {'oui' if tronque else 'non'}\n\n"
+                            f"Mission:\n{consigne}\n\n"
+                            "Réponds uniquement avec le résultat final, en français. "
+                            "Utilise des titres courts et des puces quand c'est utile. "
+                            "Ne montre jamais tes étapes de réflexion.\n\n"
+                            f"<transcription>\n{contenu}\n</transcription>"
+                        ),
+                    },
+                ],
+            }
+
+            reponse = requests.post(
+                f"{OLLAMA}/api/chat",
+                json=requete,
                 stream=True,
                 timeout=300,
-            ) as r:
+            )
+            if reponse.status_code == 400:
+                reponse.close()
+                requete.pop("think", None)
+                reponse = requests.post(
+                    f"{OLLAMA}/api/chat",
+                    json=requete,
+                    stream=True,
+                    timeout=300,
+                )
+
+            with reponse as r:
                 r.raise_for_status()
-                for brut in r.iter_lines():
-                    if not brut:
-                        continue
-                    morceau = json.loads(brut)
-                    texte = morceau.get("message", {}).get("content", "")
-                    if texte:
-                        yield texte
+                contenu_visible = False
+                for texte in morceaux_visibles_ollama(r):
+                    contenu_visible = True
+                    yield texte
+                if not contenu_visible:
+                    yield "Je n'ai pas reçu de réponse finale exploitable. Relance la demande ou essaie une question plus courte."
         except requests.RequestException as e:
             yield f"\n⚠ Assistant indisponible : {e}"
 
