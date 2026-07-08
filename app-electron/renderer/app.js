@@ -125,14 +125,27 @@ rafraichirStatut();
 // ---------------------------------------------------------------- flux live
 
 let derniereSource = null;   // pour regrouper les segments consécutifs d'une même source
+const DISTANCE_AUTOSCROLL = 80;
 
-function ajouterLigne({ heure, source, texte }) {
+function estPresDuBas() {
+  return flux.scrollHeight - flux.scrollTop - flux.clientHeight < DISTANCE_AUTOSCROLL;
+}
+
+function scrollSiBesoin(doitSuivre) {
+  if (doitSuivre) flux.scrollTop = flux.scrollHeight;
+}
+
+function ajouterLigne({ heure, source, texte, session = null }) {
+  if (session && sessionActiveNom && session !== sessionActiveNom) return;
+
+  const doitSuivre = estPresDuBas();
+
   // Même source qui continue → on complète la dernière bulle au lieu d'en créer une nouvelle
   if (source === derniereSource && flux.lastElementChild) {
     const zone = flux.lastElementChild.querySelector(".texte");
     if (zone) {
       zone.textContent += " " + texte;
-      flux.scrollTop = flux.scrollHeight;
+      scrollSiBesoin(doitSuivre);
       return;
     }
   }
@@ -159,7 +172,7 @@ function ajouterLigne({ heure, source, texte }) {
   div.appendChild(meta);
   div.appendChild(zone);
   flux.appendChild(div);
-  flux.scrollTop = flux.scrollHeight;
+  scrollSiBesoin(doitSuivre);
   derniereSource = source;
 }
 
@@ -180,11 +193,14 @@ connecterWebSocket();
 // ---------------------------------------------------------------- historique
 
 const sessionNom = document.getElementById("session-nom");
+const btnRenommerSession = document.getElementById("btn-renommer-session");
 let transcriptOuvert = null;
+let sessionActiveNom = null;
 
 async function rafraichirSession() {
   try {
     const s = await (await fetch(`${API}/session`)).json();
+    sessionActiveNom = s.nom || null;
     sessionNom.textContent = s.nom ? s.nom.replace(".md", "") : "En attente";
     sessionNom.classList.toggle("active", !!s.nom);
   } catch { /* moteur pas prêt */ }
@@ -193,14 +209,53 @@ async function rafraichirSession() {
 document.getElementById("btn-nouvelle-session").addEventListener("click", async () => {
   const nom = prompt("Nom de la nouvelle transcription (vide = date/heure) :", "");
   if (nom === null) return;
-  await fetch(`${API}/session/nouvelle`, {
+  const sourcesARelancer = await sourcesActives();
+  if (sourcesARelancer.length) {
+    await Promise.all(sourcesARelancer.map((source) => fetch(`${API}/ecoute/${source}/stop`, { method: "POST" })));
+    await new Promise((resolve) => setTimeout(resolve, 800));
+  }
+  const r = await fetch(`${API}/session/nouvelle`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ nom: nom || null }),
   });
+  if (!r.ok) return alert((await r.json()).detail || "Creation impossible");
+  const rep = await r.json();
+  sessionActiveNom = rep.nom;
+  sessionNom.textContent = rep.nom.replace(".md", "");
+  sessionNom.classList.add("active");
+  majCibleAssistant(null);
   flux.innerHTML = "";
   derniereSource = null;
-  rafraichirSession();
+  rafraichirHistorique();
+  if (sourcesARelancer.length) {
+    await Promise.all(sourcesARelancer.map((source) => fetch(`${API}/ecoute/${source}/start`, { method: "POST" }).catch(() => null)));
+    setTimeout(rafraichirStatut, 500);
+  }
+});
+
+btnRenommerSession.addEventListener("click", async () => {
+  await rafraichirSession();
+  if (!sessionActiveNom) {
+    alert("Aucune transcription en cours a renommer.");
+    return;
+  }
+  const actuel = sessionActiveNom.replace(".md", "");
+  const nom = prompt("Nouveau nom de la transcription en cours :", actuel);
+  if (!nom || nom === actuel) return;
+  const r = await fetch(`${API}/session/renommer`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ nom }),
+  });
+  if (!r.ok) {
+    alert((await r.json()).detail || "Renommage impossible");
+    return;
+  }
+  const rep = await r.json();
+  sessionActiveNom = rep.nom;
+  sessionNom.textContent = rep.nom.replace(".md", "");
+  if (transcriptAssistant) majCibleAssistant(rep.nom);
   rafraichirHistorique();
 });
 
@@ -454,6 +509,15 @@ async function reprendreEcouteApresAssistant(sources) {
   setTimeout(rafraichirStatut, 500);
 }
 
+async function sourcesActives() {
+  try {
+    const statut = await (await fetch(`${API}/status`)).json();
+    return ["pc", "moi"].filter((source) => statut[source]);
+  } catch {
+    return [];
+  }
+}
+
 async function rafraichirAssistant() {
   try {
     const s = await (await fetch(`${API}/assistant/disponible`)).json();
@@ -487,8 +551,9 @@ async function demanderAssistant(action, question = null) {
   const heure = new Date().toLocaleTimeString("fr-FR");
   const titre = TITRES_ACTIONS[action] || "Assistant";
   div.innerHTML = `<div class="meta"><span class="badge assistant">ASSISTANT</span>${heure} · ${titre}</div><div class="texte assistant-output"></div>`;
+  const doitSuivre = estPresDuBas();
   flux.appendChild(div);
-  flux.scrollTop = flux.scrollHeight;
+  scrollSiBesoin(doitSuivre);
   derniereSource = "assistant";  // la prochaine transcription repartira dans une nouvelle bulle
   const zone = div.querySelector(".texte");
   const sourcesSuspendues = await suspendreEcoutePourAssistant();
@@ -512,8 +577,9 @@ async function demanderAssistant(action, question = null) {
       if (done) break;
       reponseComplete += decodeur.decode(value, { stream: true });
       const html = formaterReponseAssistant(reponseComplete);
+      const doitSuivreFlux = estPresDuBas();
       if (html) zone.innerHTML = html;
-      flux.scrollTop = flux.scrollHeight;
+      scrollSiBesoin(doitSuivreFlux);
     }
     const htmlFinal = formaterReponseAssistant(reponseComplete);
     zone.innerHTML = htmlFinal || "<p>Je n'ai pas reçu de réponse finale exploitable.</p>";

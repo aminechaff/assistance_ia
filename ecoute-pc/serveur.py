@@ -205,6 +205,29 @@ def _fichier_transcript(nom: str) -> Path:
     return fichier
 
 
+def _nom_transcript_propre(nom: str) -> str:
+    propre = "".join(c for c in nom if c not in '\\/:*?"<>|').strip()
+    if not propre:
+        raise HTTPException(400, "nouveau nom invalide")
+    return propre
+
+
+def _renommer_transcript(fichier: Path, nouveau_nom: str) -> Path:
+    propre = _nom_transcript_propre(nouveau_nom)
+    if propre.lower().endswith(".md"):
+        propre = propre[:-3].strip()
+        if not propre:
+            raise HTTPException(400, "nouveau nom invalide")
+    cible = _fichier_transcript(propre + ".md")
+    if cible.exists() and cible != fichier:
+        raise HTTPException(409, "un fichier porte déjà ce nom")
+    if cible == fichier:
+        return fichier
+    fichier.rename(cible)
+    transcripteur.remplacer_session(fichier, cible)
+    return cible
+
+
 @app.get("/session")
 def session_courante():
     f = transcripteur.fichier_actif
@@ -215,6 +238,15 @@ def session_courante():
 def nouvelle_session(corps: dict | None = None):
     nom = (corps or {}).get("nom")
     fichier = transcripteur.nouvelle_session(nom)
+    return {"ok": True, "nom": fichier.name}
+
+
+@app.post("/session/renommer")
+def renommer_session(corps: dict):
+    f = transcripteur.fichier_actif
+    if not (f and f.exists()):
+        raise HTTPException(400, "aucune transcription en cours")
+    fichier = _renommer_transcript(f, corps.get("nom", ""))
     return {"ok": True, "nom": fichier.name}
 
 
@@ -245,16 +277,7 @@ def modifier_transcript(nom: str, corps: dict):
     if "contenu" in corps:
         fichier.write_text(corps["contenu"], encoding="utf-8")
     if corps.get("nouveau_nom"):
-        propre = "".join(c for c in corps["nouveau_nom"] if c not in '\\/:*?"<>|').strip()
-        if not propre:
-            raise HTTPException(400, "nouveau nom invalide")
-        cible = _fichier_transcript(propre + ".md")
-        if cible.exists():
-            raise HTTPException(409, "un fichier porte déjà ce nom")
-        fichier.rename(cible)
-        if transcripteur.fichier_actif == fichier:
-            transcripteur.fichier_actif = cible
-        fichier = cible
+        fichier = _renommer_transcript(fichier, corps["nouveau_nom"])
     return {"ok": True, "nom": fichier.name}
 
 

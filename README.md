@@ -300,7 +300,19 @@ Nouvelle transcription
 
 Tu peux entrer un nom ou laisser vide pour générer un nom basé sur la date et l'heure.
 
-### 6. Vider l'écran
+Si l'écoute PC ou le micro est actif, IA Assistance suspend brièvement l'écoute, crée la nouvelle session, vide l'affichage en direct, puis relance automatiquement les sources qui étaient actives. Cela évite que des segments audio de l'ancienne session se mélangent à la nouvelle transcription.
+
+### 6. Renommer la transcription en cours
+
+Cliquer sur :
+
+```text
+Renommer
+```
+
+Le bouton renomme la session active sans arrêter l'application. Les segments audio déjà en attente restent attachés au bon fichier, même si le renommage arrive pendant une transcription.
+
+### 7. Vider l'écran
 
 Cliquer sur :
 
@@ -310,7 +322,7 @@ Vider l'ecran
 
 Cela vide seulement l'affichage en direct. Le fichier Markdown de transcription n'est pas supprimé.
 
-### 7. Ouvrir l'historique
+### 8. Ouvrir l'historique
 
 Dans la colonne de gauche :
 

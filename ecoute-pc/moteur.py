@@ -77,27 +77,51 @@ class Transcripteur(threading.Thread):
         self.file_attente: queue.Queue = queue.Queue()
         self.on_evenement = on_evenement
         self.fichier_actif: Path | None = None
+        self._session_lock = threading.RLock()
+        self._session_aliases: dict[Path, Path] = {}
         TRANSCRIPTS_DIR.mkdir(exist_ok=True)
 
     def nouvelle_session(self, nom: str | None = None) -> Path:
         """Démarre un nouveau fichier de transcription ; les lignes suivantes y vont."""
-        nom = (nom or f"{datetime.now():%Y-%m-%d_%Hh%M}").strip()
-        nom = "".join(c for c in nom if c not in '\\/:*?"<>|').strip() or f"{datetime.now():%Y-%m-%d_%Hh%M}"
-        fichier = TRANSCRIPTS_DIR / f"{nom}.md"
-        i = 2
-        while fichier.exists():
-            fichier = TRANSCRIPTS_DIR / f"{nom} ({i}).md"
-            i += 1
-        fichier.write_text(f"# {fichier.stem} — {datetime.now():%d/%m/%Y %H:%M}\n\n", encoding="utf-8")
-        self.fichier_actif = fichier
-        return fichier
+        with self._session_lock:
+            nom = (nom or f"{datetime.now():%Y-%m-%d_%Hh%M}").strip()
+            nom = "".join(c for c in nom if c not in '\\/:*?"<>|').strip() or f"{datetime.now():%Y-%m-%d_%Hh%M}"
+            if nom.lower().endswith(".md"):
+                nom = nom[:-3].strip() or f"{datetime.now():%Y-%m-%d_%Hh%M}"
+            fichier = TRANSCRIPTS_DIR / f"{nom}.md"
+            i = 2
+            while fichier.exists():
+                fichier = TRANSCRIPTS_DIR / f"{nom} ({i}).md"
+                i += 1
+            fichier.write_text(f"# {fichier.stem} — {datetime.now():%d/%m/%Y %H:%M}\n\n", encoding="utf-8")
+            self.fichier_actif = fichier
+            return fichier
+
+    def session_pour_segment(self) -> Path:
+        with self._session_lock:
+            if self.fichier_actif is None or not self.fichier_actif.exists():
+                return self.nouvelle_session()
+            return self.fichier_actif
+
+    def remplacer_session(self, ancien: Path, nouveau: Path):
+        with self._session_lock:
+            self._session_aliases[ancien] = nouveau
+            if self.fichier_actif == ancien:
+                self.fichier_actif = nouveau
+
+    def resoudre_session(self, fichier: Path) -> Path:
+        with self._session_lock:
+            while fichier in self._session_aliases:
+                fichier = self._session_aliases[fichier]
+            return fichier
 
     def soumettre(self, horodatage: datetime, source: str, frames: bytes, canaux: int, freq: int):
-        self.file_attente.put((horodatage, source, frames, canaux, freq))
+        fichier = self.session_pour_segment()
+        self.file_attente.put((horodatage, source, frames, canaux, freq, fichier))
 
     def run(self):
         while True:
-            horodatage, source, frames, canaux, freq = self.file_attente.get()
+            horodatage, source, frames, canaux, freq, fichier = self.file_attente.get()
             try:
                 reponse = requests.post(
                     MURMURE_API,
@@ -118,10 +142,14 @@ class Transcripteur(threading.Thread):
                     self.on_evenement({"type": "etat", "source": source, "etat": "attente"})
             if not texte:
                 continue
-            ligne = {"type": "ligne", "heure": f"{horodatage:%H:%M:%S}", "source": source, "texte": texte}
-            if self.fichier_actif is None or not self.fichier_actif.exists():
-                self.nouvelle_session()
-            fichier = self.fichier_actif
+            fichier = self.resoudre_session(fichier)
+            ligne = {
+                "type": "ligne",
+                "heure": f"{horodatage:%H:%M:%S}",
+                "source": source,
+                "texte": texte,
+                "session": fichier.name,
+            }
             with open(fichier, "a", encoding="utf-8") as f:
                 f.write(f"[{ligne['heure']}] [{source.upper()}] {texte}\n")
             self.on_evenement(ligne)
