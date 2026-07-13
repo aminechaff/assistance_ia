@@ -1,4 +1,4 @@
-(application en pause, attention, l'usage est très restreint, il n'y a pas encore les fonctionnalités necessaire)
+(application en pause, attention, l'usage est très restreint, il n'y a pas encore les fonctionnalités de l'app)
 
 # IA Assistance
 
