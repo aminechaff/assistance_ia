@@ -550,6 +550,7 @@ Pour une conversation en français, IA Assistance stabilise maintenant la transc
 
 - les segments audio sont un peu plus longs pour éviter les faux départs ;
 - les mini-transcriptions anglaises courantes comme `I think`, `Yeah` ou des bruits de remplissage sont corrigées ou ignorées ;
+- les fragments parasites comme `I've got the`, `Don't` ou `Not the bush?` sont supprimés quand ils apparaissent dans une phrase clairement française ;
 - l'application envoie aussi une indication de langue française à Murmure si l'API locale la supporte dans une future version.
 
 Conseils pour WhatsApp :

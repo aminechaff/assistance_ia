@@ -36,6 +36,18 @@ MAX_SEGMENT_S = 20.0         # découpe forcée (musique/parole continue)
 TRANSCRIPTS_DIR = Path(__file__).parent / "transcripts"
 ESPACES_RE = re.compile(r"\s+")
 PONCTUATION_RE = re.compile(r"[\"'`.,;:!?()\[\]{}<>«»“”‘’…-]+")
+ACCENTS_FR_RE = re.compile(r"[àâçéèêëîïôùûüÿœæ]", re.IGNORECASE)
+FRAGMENTS_ANGLAIS_PARASITES_RE = re.compile(
+    r"\b(?:"
+    r"i\s*(?:'|’)?ve\s+got(?:\s+the)?|"
+    r"i\s+got(?:\s+the)?|"
+    r"don\s*(?:'|’)?t|"
+    r"do\s+not|"
+    r"not\s+the\s+(?:bush|bus)|"
+    r"of\s+people\s+who\s+s?"
+    r")\b[ \t\r\n\"'`.,;:!?()]*",
+    re.IGNORECASE,
+)
 
 CORRECTIONS_COURTES_FR = {
     "i think": "Je pense.",
@@ -51,9 +63,58 @@ CORRECTIONS_COURTES_FR = {
 }
 
 FAUX_POSITIFS_ANGLAIS_FR = {
+    "don t",
+    "dont",
+    "i ve got",
+    "i ve got the",
+    "ive got",
+    "ive got the",
+    "not the bush",
     "of people who s",
     "of people who",
     "people who s",
+}
+
+MOTS_FRANCAIS_INDICES = {
+    "ah",
+    "alors",
+    "appelé",
+    "appele",
+    "avec",
+    "bon",
+    "bonjour",
+    "ça",
+    "ca",
+    "ce",
+    "cest",
+    "comme",
+    "dans",
+    "daccord",
+    "de",
+    "des",
+    "donc",
+    "est",
+    "et",
+    "il",
+    "jai",
+    "je",
+    "la",
+    "le",
+    "les",
+    "mais",
+    "mes",
+    "non",
+    "oui",
+    "parce",
+    "pas",
+    "pour",
+    "que",
+    "quoi",
+    "suis",
+    "sur",
+    "tu",
+    "un",
+    "une",
 }
 
 MOTS_REMPLISSAGE_ANGLAIS = {
@@ -107,6 +168,22 @@ def _normaliser_pour_filtre(texte: str) -> str:
     return ESPACES_RE.sub(" ", texte).strip()
 
 
+def _semble_contenir_du_francais(texte: str, cle: str) -> bool:
+    if ACCENTS_FR_RE.search(texte):
+        return True
+    mots = cle.split()
+    return sum(1 for mot in mots if mot in MOTS_FRANCAIS_INDICES) >= 2
+
+
+def _nettoyer_fragments_anglais_parasites(texte: str) -> str | None:
+    if not FRAGMENTS_ANGLAIS_PARASITES_RE.search(texte):
+        return texte
+    nettoye = FRAGMENTS_ANGLAIS_PARASITES_RE.sub(" ", texte)
+    nettoye = re.sub(r"\s+([,.;:!?])", r"\1", nettoye)
+    nettoye = ESPACES_RE.sub(" ", nettoye).strip(" \t\r\n,.;:!?-")
+    return nettoye or None
+
+
 def stabiliser_transcription_francaise(texte: str) -> str | None:
     """Limite les faux départs anglais fréquents sur les courts segments audio."""
     texte = ESPACES_RE.sub(" ", texte).strip()
@@ -126,6 +203,9 @@ def stabiliser_transcription_francaise(texte: str) -> str | None:
     mots = [mot for mot in mots if mot]
     if 0 < len(mots) <= 4 and all(mot in MOTS_REMPLISSAGE_ANGLAIS for mot in mots):
         return None
+
+    if _semble_contenir_du_francais(texte, cle):
+        return _nettoyer_fragments_anglais_parasites(texte)
 
     return texte
 
