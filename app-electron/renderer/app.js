@@ -16,14 +16,19 @@ const flux = document.getElementById("flux");
 const pastilleMurmure = document.getElementById("statut-murmure");
 const statutMoteur = document.getElementById("statut-moteur");
 const statutOllama = document.getElementById("statut-ollama");
+const statutTraduction = document.getElementById("statut-traduction");
 const statutPcTop = document.getElementById("statut-pc-top");
 const statutMoiTop = document.getElementById("statut-moi-top");
 const listeTranscripts = document.getElementById("liste-transcripts");
 const rechercheTranscripts = document.getElementById("recherche-transcripts");
 const historiqueVide = document.getElementById("historique-vide");
 const visionneuse = document.getElementById("visionneuse");
+const toggleTraduction = document.getElementById("toggle-traduction");
+const traductionEtat = document.getElementById("traduction-etat");
 let assistantEnCours = false;
 let transcriptsCache = [];
+const CLE_TRADUCTION = "ia-assistance-traduction-active";
+let traductionSouhaitee = null;
 
 // ---------------------------------------------------------------- statut
 
@@ -51,6 +56,7 @@ const statusTop = {
 function libelleSource(source) {
   if (source === "pc") return "PC";
   if (source === "moi") return "Micro";
+  if (source === "traduction") return "TRAD";
   if (source === "erreur") return "Erreur";
   return source.toUpperCase();
 }
@@ -110,6 +116,63 @@ async function rafraichirStatut() {
   }
 }
 
+function afficherEtatTraduction(etat) {
+  if (!toggleTraduction || !traductionEtat) return;
+  const active = !!etat.active;
+  toggleTraduction.checked = active;
+  traductionEtat.textContent = active ? (etat.etat || "active") : "désactivée";
+
+  let pillEtat = "offline";
+  if (active && etat.etat === "ollama indisponible") pillEtat = "warn";
+  else if (active && (etat.etat === "traduction" || etat.etat === "en attente")) pillEtat = "warn";
+  else if (active) pillEtat = "ok";
+  majPill(statutTraduction, pillEtat, active ? "Trad FR" : "Traduction");
+}
+
+async function configurerTraduction(active, memoriser = true) {
+  if (!toggleTraduction) return;
+  traductionSouhaitee = active;
+  toggleTraduction.disabled = true;
+  if (traductionEtat) traductionEtat.textContent = active ? "activation..." : "désactivation...";
+  if (memoriser) localStorage.setItem(CLE_TRADUCTION, active ? "1" : "0");
+  try {
+    const r = await fetch(`${API}/traduction`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ active }),
+    });
+    afficherEtatTraduction(await r.json());
+  } catch {
+    afficherEtatTraduction({ active: false, etat: "moteur en attente" });
+    setTimeout(() => {
+      if (traductionSouhaitee === active) configurerTraduction(active, false);
+    }, 2000);
+  } finally {
+    toggleTraduction.disabled = false;
+  }
+}
+
+async function rafraichirTraduction() {
+  try {
+    const etat = await (await fetch(`${API}/traduction`)).json();
+    if (traductionSouhaitee === true && !etat.active) {
+      configurerTraduction(true, false);
+      return;
+    }
+    afficherEtatTraduction(etat);
+  } catch {
+    afficherEtatTraduction({ active: false, etat: "moteur en attente" });
+  }
+}
+
+if (toggleTraduction) {
+  toggleTraduction.addEventListener("change", () => configurerTraduction(toggleTraduction.checked));
+  const memorisee = localStorage.getItem(CLE_TRADUCTION);
+  if (memorisee !== null) configurerTraduction(memorisee === "1", false);
+  else rafraichirTraduction();
+  setInterval(rafraichirTraduction, 7000);
+}
+
 for (const source of ["pc", "moi"]) {
   boutons[source].addEventListener("click", async () => {
     boutons[source].disabled = true;
@@ -135,13 +198,14 @@ function scrollSiBesoin(doitSuivre) {
   if (doitSuivre) flux.scrollTop = flux.scrollHeight;
 }
 
-function ajouterLigne({ heure, source, texte, session = null }) {
+function ajouterLigne({ heure, source, texte, session = null, langue = null, langue_nom = null, source_originale = null }) {
   if (session && sessionActiveNom && session !== sessionActiveNom) return;
 
   const doitSuivre = estPresDuBas();
+  const sourceRegroupable = source === "pc" || source === "moi";
 
   // Même source qui continue → on complète la dernière bulle au lieu d'en créer une nouvelle
-  if (source === derniereSource && flux.lastElementChild) {
+  if (sourceRegroupable && source === derniereSource && flux.lastElementChild) {
     const zone = flux.lastElementChild.querySelector(".texte");
     if (zone) {
       zone.textContent += " " + texte;
@@ -151,7 +215,10 @@ function ajouterLigne({ heure, source, texte, session = null }) {
   }
 
   const div = document.createElement("div");
-  div.className = `ligne ${source === "erreur" ? "erreur" : ""}`;
+  const classes = ["ligne"];
+  if (source === "erreur") classes.push("erreur");
+  if (source === "traduction") classes.push("traduction");
+  div.className = classes.join(" ");
 
   const meta = document.createElement("div");
   meta.className = "meta";
@@ -163,12 +230,22 @@ function ajouterLigne({ heure, source, texte, session = null }) {
   const time = document.createElement("span");
   time.textContent = heure;
 
+  meta.appendChild(badge);
+  meta.appendChild(time);
+
+  if (source === "traduction") {
+    const detail = document.createElement("span");
+    detail.className = "translation-meta";
+    const langueAffichee = langue_nom || langue || "langue détectée";
+    const origine = source_originale ? ` · depuis ${libelleSource(source_originale)}` : "";
+    detail.textContent = `${langueAffichee} → français${origine}`;
+    meta.appendChild(detail);
+  }
+
   const zone = document.createElement("div");
   zone.className = "texte";
   zone.textContent = texte;
 
-  meta.appendChild(badge);
-  meta.appendChild(time);
   div.appendChild(meta);
   div.appendChild(zone);
   flux.appendChild(div);
@@ -183,6 +260,8 @@ function connecterWebSocket() {
     if (msg.type === "etat") majChip(msg.source, msg.etat);
     else if (msg.type === "murmure") {
       if (!msg.disponible) pastilleMurmure.classList.remove("ok");
+    } else if (msg.type === "traduction") {
+      afficherEtatTraduction(msg);
     } else ajouterLigne(msg);
   };
   ws.onclose = () => setTimeout(connecterWebSocket, 2000);

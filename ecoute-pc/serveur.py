@@ -15,6 +15,7 @@ import asyncio
 import json
 import queue
 import re
+import threading
 from pathlib import Path
 
 import requests
@@ -28,6 +29,118 @@ OLLAMA = "http://127.0.0.1:11434"
 MODELE_ASSISTANT = "qwen3.5:4b"
 MAX_TRANSCRIPTION_CHARS = 24000
 BALISE_REFLEXION = re.compile(r"<think\b[^>]*>.*?</think>", re.IGNORECASE | re.DOTALL)
+MOTS_RE = re.compile(r"[a-zA-ZÀ-ÖØ-öø-ÿ']+")
+
+LANGUES_NOMS = {
+    "en": "anglais",
+    "de": "allemand",
+    "es": "espagnol",
+    "it": "italien",
+    "pt": "portugais",
+    "ar": "arabe",
+    "nl": "néerlandais",
+    "pl": "polonais",
+    "tr": "turc",
+    "ru": "russe",
+    "zh": "chinois",
+    "ja": "japonais",
+    "ko": "coréen",
+}
+
+MOTS_FRANCAIS_COURANTS = {
+    "a",
+    "alors",
+    "au",
+    "aux",
+    "avec",
+    "avoir",
+    "bon",
+    "bonjour",
+    "ce",
+    "cela",
+    "ces",
+    "cette",
+    "comme",
+    "dans",
+    "de",
+    "des",
+    "donc",
+    "du",
+    "elle",
+    "en",
+    "est",
+    "et",
+    "etre",
+    "faire",
+    "il",
+    "ils",
+    "je",
+    "la",
+    "le",
+    "les",
+    "mais",
+    "me",
+    "moi",
+    "mon",
+    "ne",
+    "non",
+    "nous",
+    "on",
+    "ou",
+    "oui",
+    "par",
+    "pas",
+    "plus",
+    "pour",
+    "quand",
+    "que",
+    "qui",
+    "quoi",
+    "sa",
+    "se",
+    "si",
+    "son",
+    "sur",
+    "ta",
+    "te",
+    "tu",
+    "un",
+    "une",
+    "vous",
+}
+
+MOTS_FRANCAIS_FORTS = {
+    "alors",
+    "avec",
+    "bonjour",
+    "cest",
+    "comme",
+    "dans",
+    "donc",
+    "elle",
+    "est",
+    "etre",
+    "faire",
+    "il",
+    "ils",
+    "je",
+    "mais",
+    "moi",
+    "non",
+    "nous",
+    "oui",
+    "pas",
+    "pour",
+    "quand",
+    "que",
+    "qui",
+    "quoi",
+    "suis",
+    "sur",
+    "toi",
+    "tu",
+    "vous",
+}
 
 PROMPTS_ASSISTANT = {
     "resume": (
@@ -139,6 +252,209 @@ def morceaux_visibles_ollama(reponse):
             tampon = tampon[fermeture + 1 :]
             dans_reflexion = True
 
+
+def ressemble_deja_francais(texte: str) -> bool:
+    """Filtre rapide pour éviter d'envoyer chaque phrase française à Ollama."""
+    texte_min = texte.lower()
+    mots = [mot.strip("'").replace("'", "") for mot in MOTS_RE.findall(texte_min)]
+    if not mots:
+        return True
+    if re.search(r"[àâçéèêëîïôùûüÿœæ]", texte_min):
+        return True
+    score = sum(1 for mot in mots if mot in MOTS_FRANCAIS_COURANTS)
+    score_fort = sum(1 for mot in mots if mot in MOTS_FRANCAIS_FORTS)
+    if len(mots) <= 5:
+        return score_fort >= 1 or score >= 2
+    return (score_fort >= 1 and score >= 2) or score >= 3 or (score / len(mots)) >= 0.38
+
+
+def extraire_objet_json(texte: str) -> dict:
+    texte = nettoyer_reponse_assistant(texte).strip()
+    try:
+        return json.loads(texte)
+    except json.JSONDecodeError:
+        bloc = re.search(r"\{.*\}", texte, re.DOTALL)
+        if not bloc:
+            return {}
+        try:
+            return json.loads(bloc.group(0))
+        except json.JSONDecodeError:
+            return {}
+
+
+def valeur_booleenne(valeur) -> bool:
+    if isinstance(valeur, bool):
+        return valeur
+    return str(valeur).strip().lower() in {"1", "true", "oui", "yes", "vrai"}
+
+
+class Traducteur(threading.Thread):
+    """Traduit les lignes non françaises sans bloquer la transcription."""
+
+    def __init__(self, on_evenement, transcripteur_ref: moteur.Transcripteur):
+        super().__init__(daemon=True)
+        self.file_attente: queue.Queue = queue.Queue()
+        self.on_evenement = on_evenement
+        self.transcripteur = transcripteur_ref
+        self._lock = threading.RLock()
+        self._actif = False
+        self._etat = "désactivée"
+
+    def status(self) -> dict:
+        with self._lock:
+            return {
+                "active": self._actif,
+                "etat": self._etat,
+                "file": self.file_attente.qsize(),
+            }
+
+    def _emettre_etat(self):
+        self.on_evenement({"type": "traduction", **self.status()})
+
+    def _definir_etat(self, etat: str):
+        with self._lock:
+            self._etat = etat
+        self._emettre_etat()
+
+    def _vider_file(self):
+        while True:
+            try:
+                self.file_attente.get_nowait()
+            except queue.Empty:
+                return
+
+    def configurer(self, actif: bool):
+        with self._lock:
+            self._actif = bool(actif)
+            self._etat = "prête" if self._actif else "désactivée"
+            if not self._actif:
+                self._vider_file()
+        self._emettre_etat()
+
+    def actif(self) -> bool:
+        with self._lock:
+            return self._actif
+
+    def soumettre(self, ligne: dict):
+        if not self.actif():
+            return
+        if ligne.get("type") != "ligne" or ligne.get("source") not in {"pc", "moi"}:
+            return
+        texte = (ligne.get("texte") or "").strip()
+        if not texte or ressemble_deja_francais(texte):
+            return
+        self.file_attente.put(dict(ligne))
+        self._definir_etat("en attente")
+
+    def _traduire_avec_ollama(self, texte: str) -> dict | None:
+        requete = {
+            "model": MODELE_ASSISTANT,
+            "stream": False,
+            "think": False,
+            "format": "json",
+            "options": {"temperature": 0},
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "Tu es un moteur de détection de langue et de traduction vers le français. "
+                        "Réponds uniquement avec un JSON valide, sans markdown, sans commentaire, "
+                        "sans balise <think>."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        "Analyse le texte. S'il est déjà en français, mets traduire à false. "
+                        "Sinon, détecte la langue et traduis naturellement en français.\n\n"
+                        'Format exact: {"traduire": true, "langue": "en", '
+                        '"nom_langue": "anglais", "traduction": "texte français"}\n\n'
+                        f"Texte:\n{texte}"
+                    ),
+                },
+            ],
+        }
+        reponse = requests.post(f"{OLLAMA}/api/chat", json=requete, timeout=180)
+        if reponse.status_code == 400:
+            reponse.close()
+            requete.pop("think", None)
+            reponse = requests.post(f"{OLLAMA}/api/chat", json=requete, timeout=180)
+        reponse.raise_for_status()
+
+        contenu = reponse.json().get("message", {}).get("content", "")
+        objet = extraire_objet_json(contenu)
+        langue = str(objet.get("langue") or objet.get("language") or "").strip().lower()
+        traduction = str(objet.get("traduction") or objet.get("translation") or "").strip()
+        doit_traduire = valeur_booleenne(objet.get("traduire", bool(traduction)))
+
+        if not doit_traduire or langue.startswith("fr") or not traduction:
+            return None
+        if traduction.casefold() == texte.strip().casefold():
+            return None
+
+        code = langue[:8] or "autre"
+        return {
+            "texte": traduction,
+            "langue": code,
+            "langue_nom": str(objet.get("nom_langue") or LANGUES_NOMS.get(code[:2], "langue détectée")),
+        }
+
+    def _fichier_session(self, nom: str | None) -> Path | None:
+        if not nom:
+            return None
+        fichier = (moteur.TRANSCRIPTS_DIR / Path(nom).name).resolve()
+        if fichier.parent != moteur.TRANSCRIPTS_DIR.resolve() or fichier.suffix != ".md":
+            return None
+        return fichier
+
+    def run(self):
+        while True:
+            ligne = self.file_attente.get()
+            if not self.actif():
+                continue
+            texte_original = (ligne.get("texte") or "").strip()
+            if not texte_original:
+                continue
+
+            self._definir_etat("traduction")
+            try:
+                resultat = self._traduire_avec_ollama(texte_original)
+            except requests.RequestException:
+                self._definir_etat("ollama indisponible")
+                continue
+            except Exception:
+                self._definir_etat("erreur")
+                continue
+
+            if not resultat or not self.actif():
+                self._definir_etat("prête" if self.actif() else "désactivée")
+                continue
+
+            fichier = self._fichier_session(ligne.get("session"))
+            if fichier is not None:
+                fichier = self.transcripteur.resoudre_session(fichier)
+                if fichier.exists():
+                    with open(fichier, "a", encoding="utf-8") as f:
+                        f.write(
+                            f"[{ligne.get('heure', '')}] [TRADUCTION {resultat['langue_nom'].upper()} -> FR] "
+                            f"{resultat['texte']}\n"
+                        )
+
+            self.on_evenement(
+                {
+                    "type": "ligne",
+                    "heure": ligne.get("heure"),
+                    "source": "traduction",
+                    "source_originale": ligne.get("source"),
+                    "texte": resultat["texte"],
+                    "langue": resultat["langue"],
+                    "langue_nom": resultat["langue_nom"],
+                    "session": fichier.name if fichier is not None else ligne.get("session"),
+                }
+            )
+            self._definir_etat("prête" if self.file_attente.empty() else "en attente")
+
+
 app = FastAPI(title="IA Assistance — moteur d'écoute")
 
 lignes_a_diffuser: queue.Queue = queue.Queue()
@@ -147,6 +463,8 @@ ecouteurs: dict[str, moteur.Ecouteur] = {}
 
 transcripteur = moteur.Transcripteur(on_evenement=lignes_a_diffuser.put)
 transcripteur.start()
+traducteur = Traducteur(on_evenement=lignes_a_diffuser.put, transcripteur_ref=transcripteur)
+traducteur.start()
 
 
 @app.on_event("startup")
@@ -159,6 +477,7 @@ async def boucle_diffusion():
     loop = asyncio.get_event_loop()
     while True:
         ligne = await loop.run_in_executor(None, lignes_a_diffuser.get)
+        traducteur.soumettre(ligne)
         deconnectes = set()
         for ws in clients_ws:
             try:
@@ -176,6 +495,17 @@ def status():
         "moi": "moi" in ecouteurs and ecouteurs["moi"].is_alive(),
         "peripheriques": {s: e.nom_peripherique for s, e in ecouteurs.items() if e.is_alive()},
     }
+
+
+@app.get("/traduction")
+def statut_traduction():
+    return traducteur.status()
+
+
+@app.post("/traduction")
+def configurer_traduction(corps: dict):
+    traducteur.configurer(bool(corps.get("active")))
+    return traducteur.status()
 
 
 @app.post("/ecoute/{source}/start")

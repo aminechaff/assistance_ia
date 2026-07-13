@@ -28,6 +28,10 @@
         <span class="point"></span>
         <span>Ollama</span>
       </div>
+      <div id="statut-traduction" class="status-pill">
+        <span class="point"></span>
+        <span>Traduction</span>
+      </div>
       <div id="statut-pc-top" class="status-pill">
         <span class="point"></span>
         <span>PC</span>
@@ -83,6 +87,20 @@
           <button id="btn-renommer-session" class="secondary-button">Renommer</button>
           <button id="btn-vider-ecran" class="secondary-button subtle">Vider l'ecran</button>
         </div>
+      </section>
+
+      <section class="sidebar-section translation-card">
+        <div class="section-title">
+          <span>Traduction</span>
+        </div>
+        <label class="toggle-row">
+          <input id="toggle-traduction" type="checkbox" />
+          <span class="toggle-switch" aria-hidden="true"></span>
+          <span class="toggle-copy">
+            <strong>Traduire en français</strong>
+            <small id="traduction-etat">désactivée</small>
+          </span>
+        </label>
       </section>
 
       <section class="sidebar-section history-card">

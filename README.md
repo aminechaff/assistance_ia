@@ -39,12 +39,13 @@ Fonctions principales :
 - écouter le microphone ;
 - envoyer les segments audio à l'API locale de Murmure ;
 - afficher la transcription en direct ;
+- traduire automatiquement vers le français les phrases reconnues dans une autre langue ;
 - sauvegarder chaque session en Markdown ;
 - ouvrir, renommer, modifier et supprimer les transcriptions ;
 - poser des questions à un assistant IA local ;
 - produire des résumés, comptes-rendus, points clés, actions, fiches étudiant, analyses doctorat et versions simplifiées ;
 - suspendre automatiquement l'écoute pendant qu'Ollama répond, puis reprendre l'écoute ensuite ;
-- afficher clairement les statuts de Murmure, Ollama, du moteur Python, du PC et du micro.
+- afficher clairement les statuts de Murmure, Ollama, traduction, du moteur Python, du PC et du micro.
 
 Le projet est pensé pour rester local : l'audio, les transcriptions et l'assistant tournent sur la machine, à condition que Murmure et Ollama soient lancés localement.
 
@@ -287,12 +288,25 @@ Cela capture le microphone par défaut.
 
 La zone centrale affiche les lignes transcrites avec :
 
-- la source (`PC`, `Micro`, `Assistant`) ;
+- la source (`PC`, `Micro`, `TRAD`, `Assistant`) ;
 - l'heure ;
 - le texte transcrit ;
+- les traductions en français quand l'option est activée ;
 - les réponses de l'assistant IA.
 
-### 5. Créer une nouvelle transcription
+### 5. Traduire automatiquement vers le français
+
+Dans la colonne de gauche, activer :
+
+```text
+Traduire en français
+```
+
+Quand une phrase est détectée en anglais, allemand, espagnol ou dans une autre langue reconnue par Ollama, IA Assistance ajoute une bulle `TRAD` en couleur séparée avec la traduction française. La transcription d'origine reste visible dans son canal `PC` ou `Micro`.
+
+La traduction utilise Ollama localement. Si Ollama est fermé, la transcription continue normalement mais le statut de traduction indique que Ollama est indisponible.
+
+### 6. Créer une nouvelle transcription
 
 Cliquer sur :
 
@@ -304,7 +318,7 @@ Tu peux entrer un nom ou laisser vide pour générer un nom basé sur la date et
 
 Si l'écoute PC ou le micro est actif, IA Assistance suspend brièvement l'écoute, crée la nouvelle session, vide l'affichage en direct, puis relance automatiquement les sources qui étaient actives. Cela évite que des segments audio de l'ancienne session se mélangent à la nouvelle transcription.
 
-### 6. Renommer la transcription en cours
+### 7. Renommer la transcription en cours
 
 Cliquer sur :
 
@@ -314,7 +328,7 @@ Renommer
 
 Le bouton renomme la session active sans arrêter l'application. Les segments audio déjà en attente restent attachés au bon fichier, même si le renommage arrive pendant une transcription.
 
-### 7. Vider l'écran
+### 8. Vider l'écran
 
 Cliquer sur :
 
@@ -324,7 +338,7 @@ Vider l'ecran
 
 Cela vide seulement l'affichage en direct. Le fichier Markdown de transcription n'est pas supprimé.
 
-### 8. Ouvrir l'historique
+### 9. Ouvrir l'historique
 
 Dans la colonne de gauche :
 
@@ -461,6 +475,7 @@ Les valeurs importantes sont actuellement définies dans le code.
 | WebSocket live | `ws://127.0.0.1:4900/live` | `app-electron/renderer/app.js` |
 | API Ollama | `http://127.0.0.1:11434` | `ecoute-pc/serveur.py` |
 | Modèle assistant | `qwen3.5:4b` | `ecoute-pc/serveur.py` |
+| Traduction automatique | désactivée par défaut, mémorisée dans l'interface | `ecoute-pc/serveur.py`, `app-electron/renderer/app.js` |
 | Dossier transcriptions | `ecoute-pc/transcripts/` | `ecoute-pc/moteur.py` |
 
 Si tu changes un port, il faut mettre à jour les fichiers correspondants.
