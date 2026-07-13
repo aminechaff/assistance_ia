@@ -1,3 +1,5 @@
+(application en pause, attention, l'usage est très restreint, il n'y a pas encore les fonctionnalités necessaire)
+
 # IA Assistance
 
 IA Assistance est une application desktop Windows pour écouter le son du PC, écouter le microphone, transcrire en direct avec Murmure, sauvegarder les transcriptions et les analyser avec un assistant IA local via Ollama.
