@@ -12,6 +12,7 @@ La transcription s'affiche en direct et s'enregistre dans transcripts/.
 
 import io
 import queue
+import re
 import sys
 import threading
 import time
@@ -25,13 +26,52 @@ import pyaudiowpatch as pyaudio
 
 # ----------------------------- Réglages -----------------------------------
 MURMURE_API = "http://127.0.0.1:4800/api/transcribe"
+LANGUE_TRANSCRIPTION = "fr"
 SOURCE_LABEL = "PC"          # étiquette de la source dans la transcription
 FRAME_MS = 100               # taille d'un bloc d'analyse (ms)
-SILENCE_RMS = 250            # en dessous = silence (échelle int16, 0..32767)
-SILENCE_FLUSH_S = 0.9        # durée de silence qui clôt un segment
-MIN_SEGMENT_S = 1.2          # segments plus courts = ignorés (bruit)
+SILENCE_RMS = 280            # en dessous = silence (échelle int16, 0..32767)
+SILENCE_FLUSH_S = 1.15       # durée de silence qui clôt un segment
+MIN_SEGMENT_S = 1.8          # segments plus courts = ignorés (bruit)
 MAX_SEGMENT_S = 20.0         # découpe forcée (musique/parole continue)
 TRANSCRIPTS_DIR = Path(__file__).parent / "transcripts"
+ESPACES_RE = re.compile(r"\s+")
+PONCTUATION_RE = re.compile(r"[\"'`.,;:!?()\[\]{}<>«»“”‘’…-]+")
+
+CORRECTIONS_COURTES_FR = {
+    "i think": "Je pense.",
+    "i think so": "Je pense que oui.",
+    "yes": "Oui.",
+    "yeah": "Oui.",
+    "yeah yeah": "Oui, oui.",
+    "ok": "D'accord.",
+    "okay": "D'accord.",
+    "all right": "D'accord.",
+    "thank you": "Merci.",
+    "thanks": "Merci.",
+}
+
+FAUX_POSITIFS_ANGLAIS_FR = {
+    "of people who s",
+    "of people who",
+    "people who s",
+}
+
+MOTS_REMPLISSAGE_ANGLAIS = {
+    "ah",
+    "eh",
+    "er",
+    "hm",
+    "hmm",
+    "mhm",
+    "mm",
+    "mmhm",
+    "mmm",
+    "uh",
+    "uhh",
+    "um",
+    "umm",
+    "yeah",
+}
 # ---------------------------------------------------------------------------
 
 
@@ -61,14 +101,44 @@ def vers_wav_mono(frames: bytes, canaux: int, freq: int) -> bytes:
     return buf.getvalue()
 
 
+def _normaliser_pour_filtre(texte: str) -> str:
+    texte = ESPACES_RE.sub(" ", texte).strip().lower()
+    texte = PONCTUATION_RE.sub(" ", texte)
+    return ESPACES_RE.sub(" ", texte).strip()
+
+
+def stabiliser_transcription_francaise(texte: str) -> str | None:
+    """Limite les faux départs anglais fréquents sur les courts segments audio."""
+    texte = ESPACES_RE.sub(" ", texte).strip()
+    if not texte:
+        return None
+
+    if LANGUE_TRANSCRIPTION.lower() != "fr":
+        return texte
+
+    cle = _normaliser_pour_filtre(texte.replace("-", " "))
+    if cle in CORRECTIONS_COURTES_FR:
+        return CORRECTIONS_COURTES_FR[cle]
+    if cle in FAUX_POSITIFS_ANGLAIS_FR:
+        return None
+
+    mots = [mot.strip(" \t\r\n\"'`.,;:!?()[]{}<>«»“”‘’…-").lower() for mot in cle.split()]
+    mots = [mot for mot in mots if mot]
+    if 0 < len(mots) <= 4 and all(mot in MOTS_REMPLISSAGE_ANGLAIS for mot in mots):
+        return None
+
+    return texte
+
+
 def transcrire(wav: bytes) -> str:
     reponse = requests.post(
         MURMURE_API,
+        data={"language": LANGUE_TRANSCRIPTION, "lang": LANGUE_TRANSCRIPTION},
         files={"audio": ("segment.wav", wav, "audio/wav")},
         timeout=120,
     )
     reponse.raise_for_status()
-    return reponse.json().get("text", "").strip()
+    return stabiliser_transcription_francaise(reponse.json().get("text", "")) or ""
 
 
 class Transcripteur(threading.Thread):

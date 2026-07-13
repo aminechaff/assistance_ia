@@ -455,6 +455,7 @@ Les valeurs importantes sont actuellement définies dans le code.
 | Élément | Valeur par défaut | Fichier |
 | --- | --- | --- |
 | API Murmure | `http://127.0.0.1:4800/api/transcribe` | `ecoute-pc/moteur.py` |
+| Langue attendue pour la stabilisation | `fr` | `ecoute-pc/moteur.py` |
 | Serveur IA Assistance | `http://127.0.0.1:4900` | `ecoute-pc/serveur.py` |
 | API côté interface | `http://127.0.0.1:4900` | `app-electron/renderer/app.js` |
 | WebSocket live | `ws://127.0.0.1:4900/live` | `app-electron/renderer/app.js` |
@@ -527,6 +528,21 @@ Ollama tourne localement. La vitesse dépend :
 - de l'activité de la machine.
 
 IA Assistance affiche un indicateur pendant l'attente et filtre les étapes de raisonnement du modèle quand elles apparaissent.
+
+### WhatsApp ou un appel écrit des phrases anglaises
+
+Pour une conversation en français, IA Assistance stabilise maintenant la transcription en mode `fr` :
+
+- les segments audio sont un peu plus longs pour éviter les faux départs ;
+- les mini-transcriptions anglaises courantes comme `I think`, `Yeah` ou des bruits de remplissage sont corrigées ou ignorées ;
+- l'application envoie aussi une indication de langue française à Murmure si l'API locale la supporte dans une future version.
+
+Conseils pour WhatsApp :
+
+- activer `Ma voix` pour transcrire ce que tu dis dans le micro ;
+- activer `Écoute PC` pour transcrire la personne que tu entends dans WhatsApp ;
+- éviter d'activer les deux si tu veux une transcription très propre d'un seul interlocuteur ;
+- utiliser un casque limite l'écho entre le son PC et le micro.
 
 ### L'écoute PC ne démarre pas
 

@@ -8,6 +8,7 @@ Utilisé par serveur.py (piloté par l'app Electron) et réutilisable en CLI.
 
 import io
 import queue
+import re
 import threading
 import wave
 from datetime import datetime
@@ -19,12 +20,51 @@ import requests
 import pyaudiowpatch as pyaudio
 
 MURMURE_API = "http://127.0.0.1:4800/api/transcribe"
+LANGUE_TRANSCRIPTION = "fr"
 FRAME_MS = 100
-SILENCE_RMS = 250
-SILENCE_FLUSH_S = 0.9
-MIN_SEGMENT_S = 1.2
-MAX_SEGMENT_S = 8.0
+SILENCE_RMS = 280
+SILENCE_FLUSH_S = 1.15
+MIN_SEGMENT_S = 1.8
+MAX_SEGMENT_S = 12.0
 TRANSCRIPTS_DIR = Path(__file__).parent / "transcripts"
+ESPACES_RE = re.compile(r"\s+")
+PONCTUATION_RE = re.compile(r"[\"'`.,;:!?()\[\]{}<>«»“”‘’…-]+")
+
+CORRECTIONS_COURTES_FR = {
+    "i think": "Je pense.",
+    "i think so": "Je pense que oui.",
+    "yes": "Oui.",
+    "yeah": "Oui.",
+    "yeah yeah": "Oui, oui.",
+    "ok": "D'accord.",
+    "okay": "D'accord.",
+    "all right": "D'accord.",
+    "thank you": "Merci.",
+    "thanks": "Merci.",
+}
+
+FAUX_POSITIFS_ANGLAIS_FR = {
+    "of people who s",
+    "of people who",
+    "people who s",
+}
+
+MOTS_REMPLISSAGE_ANGLAIS = {
+    "ah",
+    "eh",
+    "er",
+    "hm",
+    "hmm",
+    "mhm",
+    "mm",
+    "mmhm",
+    "mmm",
+    "uh",
+    "uhh",
+    "um",
+    "umm",
+    "yeah",
+}
 
 EvenementCallback = Callable[[dict], None]
 # Deux types d'événements circulent vers l'UI :
@@ -67,6 +107,35 @@ def vers_wav_mono(frames: bytes, canaux: int, freq: int) -> bytes:
         wf.setframerate(freq)
         wf.writeframes(audio.tobytes())
     return buf.getvalue()
+
+
+def _normaliser_pour_filtre(texte: str) -> str:
+    texte = ESPACES_RE.sub(" ", texte).strip().lower()
+    texte = PONCTUATION_RE.sub(" ", texte)
+    return ESPACES_RE.sub(" ", texte).strip()
+
+
+def stabiliser_transcription_francaise(texte: str) -> str | None:
+    """Limite les faux départs anglais fréquents sur les courts segments audio."""
+    texte = ESPACES_RE.sub(" ", texte).strip()
+    if not texte:
+        return None
+
+    if LANGUE_TRANSCRIPTION.lower() != "fr":
+        return texte
+
+    cle = _normaliser_pour_filtre(texte.replace("-", " "))
+    if cle in CORRECTIONS_COURTES_FR:
+        return CORRECTIONS_COURTES_FR[cle]
+    if cle in FAUX_POSITIFS_ANGLAIS_FR:
+        return None
+
+    mots = [mot.strip(" \t\r\n\"'`.,;:!?()[]{}<>«»“”‘’…-").lower() for mot in cle.split()]
+    mots = [mot for mot in mots if mot]
+    if 0 < len(mots) <= 4 and all(mot in MOTS_REMPLISSAGE_ANGLAIS for mot in mots):
+        return None
+
+    return texte
 
 
 class Transcripteur(threading.Thread):
@@ -125,11 +194,12 @@ class Transcripteur(threading.Thread):
             try:
                 reponse = requests.post(
                     MURMURE_API,
+                    data={"language": LANGUE_TRANSCRIPTION, "lang": LANGUE_TRANSCRIPTION},
                     files={"audio": ("segment.wav", vers_wav_mono(frames, canaux, freq), "audio/wav")},
                     timeout=120,
                 )
                 reponse.raise_for_status()
-                texte = reponse.json().get("text", "").strip()
+                texte = stabiliser_transcription_francaise(reponse.json().get("text", ""))
             except requests.ConnectionError:
                 # Murmure fermé ou API désactivée : on signale l'état, sans polluer le flux
                 self.on_evenement({"type": "murmure", "disponible": False})
