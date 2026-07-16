@@ -1,4 +1,4 @@
-> ⚠️ Projet personnel en développement actif. L'application est fonctionnelle mais nécessite **Murmure** et **Ollama** installés et lancés localement (voir Prérequis). Les ports et le modèle sont encore configurés dans le code.
+> ⚠️ Projet personnel OPEN Source en développement actif. L'application est fonctionnelle mais nécessite **Murmure** et **Ollama** installés et lancés localement (voir Prérequis). Les ports et le modèle sont encore configurés dans le code.
 
 # IA Assistance
 
