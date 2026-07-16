@@ -4,9 +4,6 @@
 
 IA Assistance est une application desktop Windows pour écouter le son du PC, écouter le microphone, transcrire en direct avec Murmure, sauvegarder les transcriptions et les analyser avec un assistant IA local via Ollama.
 
-Le dépôt GitHub officiel est :
-
-<https://github.com/aminechaff/assistance_ia>
 
 ## Sommaire
 
